@@ -184,7 +184,10 @@ export function AcademicAdminPanel(_props: AcademicAdminPanelProps) {
             { id: 'modules' as const, label: 'Modules', description: 'Manage modules in this session', icon: BookOpen },
             { id: 'examinations' as const, label: 'Examinations', description: 'Manage examinations in this session', icon: FileText },
           ].map(({ id, label, description, icon: Icon }) => (
-            <Button key={id} type="button" variant={activeSection === id ? 'default' : 'outline'} className="h-20 justify-start gap-3 text-left" onClick={() => setActiveSection(id)}>
+            <Button key={id} type="button" variant={activeSection === id ? 'default' : 'outline'} className="h-20 justify-start gap-3 text-left" disabled={id === 'modules' && !selectedProgramId} onClick={() => {
+              if (id === 'modules' && !selectedProgramId) return;
+              setActiveSection(id);
+            }}>
               <Icon className="w-5 h-5 shrink-0" />
               <span className="flex flex-col items-start gap-1">
                 <span className="font-semibold">{label}</span>
