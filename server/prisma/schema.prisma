@@ -59,6 +59,9 @@ model Organization {
   payrollBatches        PayrollBatch[]
   polls                 Poll[]
   programs              Program[]
+  modules               Module[]
+  semesters             Semester[]
+  examinations          Examination[]
   programMaterials      ProgramMaterial[]
   programAllocations    ProgramAllocation[]
   universityAllocations UniversityAllocation[]
@@ -361,7 +364,7 @@ model Program {
   id                      String                @id @default(uuid())
   universityId            String
   organizationId          String
-  academicSessionId        String?
+  academicSessionId       String?
   subDepartmentId         String?
   name                    String
   courseName              String?
@@ -378,6 +381,9 @@ model Program {
   admissionSessions       AdmissionSession[]
   enrollments             Enrollment[]
   materials               ProgramMaterial[]
+  modules                 Module[]
+  semesterRecords         Semester[]
+  examinations            Examination[]
   feeStructure            FeeStructure?
   organization            Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   academicSession         AdmissionSession?     @relation("AcademicSessionPrograms", fields: [academicSessionId], references: [id])
@@ -391,6 +397,77 @@ model Program {
 
   @@index([universityId])
   @@index([organizationId])
+}
+
+model Module {
+  id                String            @id @default(uuid())
+  organizationId    String
+  programId         String
+  academicSessionId String?
+  moduleCode        String
+  moduleName        String
+  moduleType        String
+  semesterId        String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  program           Program           @relation(fields: [programId], references: [id], onDelete: Cascade)
+  academicSession   AdmissionSession? @relation(fields: [academicSessionId], references: [id])
+  semester          Semester?         @relation(fields: [semesterId], references: [id])
+
+  @@unique([programId, moduleCode])
+  @@index([organizationId])
+  @@map("modules")
+}
+
+model Semester {
+  id                String           @id @default(uuid())
+  organizationId    String
+  programId         String
+  academicSessionId String
+  semesterName      String
+  semesterNumber    Int
+  startDate         DateTime
+  endDate           DateTime
+  status            String           @default("active")
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  program           Program          @relation(fields: [programId], references: [id], onDelete: Cascade)
+  academicSession   AdmissionSession @relation(fields: [academicSessionId], references: [id], onDelete: Cascade)
+  modules           Module[]
+  examinations      Examination[]
+
+  @@unique([programId, semesterNumber])
+  @@index([organizationId])
+  @@index([programId])
+  @@map("semester")
+}
+
+model Examination {
+  id                String           @id @default(uuid())
+  organizationId    String
+  academicSessionId String
+  programId         String
+  semesterId        String
+  examinationName   String
+  examinationType   String
+  startDate         DateTime
+  endDate           DateTime
+  description       String?
+  status            String           @default("draft")
+  moduleIds         Json             @default("[]")
+  schedule          Json             @default("[]")
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  academicSession   AdmissionSession @relation(fields: [academicSessionId], references: [id], onDelete: Cascade)
+  program           Program          @relation(fields: [programId], references: [id], onDelete: Cascade)
+  semester          Semester         @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([academicSessionId, programId, semesterId])
+  @@map("examinations")
 }
 
 model StudyCenter {
@@ -451,40 +528,40 @@ model StudyCenter {
 }
 
 model Student {
-  id                    String                 @id @default(uuid())
-  centerId              String
-  organizationId        String
-  enrollmentNo          String                 @unique
-  uniEnrollmentNumber   String?
-  name                  String
-  email                 String                 @unique
-  phone                 String
-  address               String
-  programId             String
-  sessionId             String?
-  specialisation        String?
-  abcId                 String?
-  debId                 String?
-  dob                   String?
-  religion              String?
-  caste                 String?
-  fatherName            String?
-  motherName            String?
-  parentMobile          String?
-  studentPhoto          String?
-  pincode               String?
-  alternativePhone      String?
-  maritalStatus         String?
-  currentlyWorking      String?
-  status                String                 @default("pending")
-  joinDate              DateTime               @default(now())
-  enrolledAt            DateTime?
-  reregStatus           Json?
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
-  referredBy            String?
-  enrollments           Enrollment[]
-  internalMarks         InternalMark[]
+  id                  String         @id @default(uuid())
+  centerId            String
+  organizationId      String
+  enrollmentNo        String         @unique
+  uniEnrollmentNumber String?
+  name                String
+  email               String         @unique
+  phone               String
+  address             String
+  programId           String
+  sessionId           String?
+  specialisation      String?
+  abcId               String?
+  debId               String?
+  dob                 String?
+  religion            String?
+  caste               String?
+  fatherName          String?
+  motherName          String?
+  parentMobile        String?
+  studentPhoto        String?
+  pincode             String?
+  alternativePhone    String?
+  maritalStatus       String?
+  currentlyWorking    String?
+  status              String         @default("pending")
+  joinDate            DateTime       @default(now())
+  enrolledAt          DateTime?
+  reregStatus         Json?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  referredBy          String?
+  enrollments         Enrollment[]
+  internalMarks       InternalMark[]
 
   universityFeePayments UniversityFeePayment[] @relation("StudentUniFeePayments")
   invoices              Invoice[]
@@ -856,6 +933,9 @@ model AdmissionSession {
   organization            Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   program                 Program?              @relation(fields: [programId], references: [id])
   academicPrograms        Program[]             @relation("AcademicSessionPrograms")
+  modules                 Module[]
+  examinations            Examination[]
+  semesters               Semester[]
   studyCenter             StudyCenter?          @relation(fields: [studyCenterId], references: [id])
   subDepartment           SubDepartment?        @relation(fields: [subDepartmentId], references: [id])
   university              University?           @relation(fields: [universityId], references: [id])
@@ -866,7 +946,7 @@ model AdmissionSession {
 }
 
 model Enrollment {
-  id                   String             @id @default(uuid())
+  id                   String              @id @default(uuid())
   organizationId       String
   studentId            String?
   programId            String
@@ -886,14 +966,14 @@ model Enrollment {
   alternativePhone     String?
   maritalStatus        String?
   currentlyWorking     String?
-  admissionDate        DateTime?          @default(now())
-  enrollmentNumber     String?            @unique
+  admissionDate        DateTime?           @default(now())
+  enrollmentNumber     String?             @unique
   uniEnrollmentNumber  String?
   studentName          String
   studentEmail         String
   studentPhone         String
   studentAddress       String
-  status               String             @default("pending_doc_review")
+  status               String              @default("pending_doc_review")
   departmentRemarks    String?
   financeRemarks       String?
   departmentReviewedBy String?
@@ -901,34 +981,34 @@ model Enrollment {
   financeReviewedBy    String?
   financeReviewedAt    DateTime?
   enrolledAt           DateTime?
-  statusHistory        Json               @default("[]")
-  documents            Json?              @default("[]")
-  educationalDetails   Json?              @default("[]")
+  statusHistory        Json                @default("[]")
+  documents            Json?               @default("[]")
+  educationalDetails   Json?               @default("[]")
   paymentMethod        String? // e.g. 'full_payment' or 'installment'
   totalFee             Float? // The fee calculated at the time of enrollment
   paymentType          String? // "wallet", "emi", "direct_to_university"
   emiDetails           Json?
   refundStatus         String? // "pending", "processed", "rejected"
   refundAmount         Float?
-  createdAt            DateTime           @default(now())
-  updatedAt            DateTime           @updatedAt
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
   universityRemarks    String?
   universityReviewedAt DateTime?
   universityReviewedBy String?
   salesUserId          String?
-  salesUser            User?              @relation("SalesUserEnrollments", fields: [salesUserId], references: [id])
-  departmentReviewer   User?              @relation("DeptReviewedBy", fields: [departmentReviewedBy], references: [id])
-  financeReviewer      User?              @relation("FinanceReviewedBy", fields: [financeReviewedBy], references: [id])
-  organization         Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  program              Program            @relation(fields: [programId], references: [id])
-  session              AdmissionSession   @relation(fields: [sessionId], references: [id])
-  student              Student?           @relation(fields: [studentId], references: [id])
-  studyCenter          StudyCenter        @relation(fields: [studyCenterId], references: [id])
-  universityReviewer   User?              @relation("UniversityReviewedBy", fields: [universityReviewedBy], references: [id])
+  salesUser            User?               @relation("SalesUserEnrollments", fields: [salesUserId], references: [id])
+  departmentReviewer   User?               @relation("DeptReviewedBy", fields: [departmentReviewedBy], references: [id])
+  financeReviewer      User?               @relation("FinanceReviewedBy", fields: [financeReviewedBy], references: [id])
+  organization         Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  program              Program             @relation(fields: [programId], references: [id])
+  session              AdmissionSession    @relation(fields: [sessionId], references: [id])
+  student              Student?            @relation(fields: [studentId], references: [id])
+  studyCenter          StudyCenter         @relation(fields: [studyCenterId], references: [id])
+  universityReviewer   User?               @relation("UniversityReviewedBy", fields: [universityReviewedBy], references: [id])
   payment              EnrollmentPayment?
   commissionIn         CommissionIn?
   studentFeeReceipts   StudentFeeReceipt[]
-  extraFees            Json?              @default("[]")
+  extraFees            Json?               @default("[]")
 
   @@unique([studentId, programId, sessionId])
   @@index([organizationId, status])
@@ -1033,8 +1113,8 @@ model GSTSetting {
 }
 
 model EmployeeProfile {
-  id                 String       @id @default(uuid())
-  userId             String       @unique
+  id                 String          @id @default(uuid())
+  userId             String          @unique
   organizationId     String
   dateOfBirth        DateTime?
   gender             String?
@@ -1048,8 +1128,8 @@ model EmployeeProfile {
   joinDate           DateTime?
   confirmationDate   DateTime?
   probationEndDate   DateTime?
-  employmentType     String       @default("full_time")
-  employmentRole     EmploymentRole @default(probation)
+  employmentType     String          @default("full_time")
+  employmentRole     EmploymentRole  @default(probation)
   inductionStatus    InductionStatus @default(pending)
   workLocation       String?
   reportingManagerId String?
@@ -1059,18 +1139,18 @@ model EmployeeProfile {
   bankAccountNo      String?
   ifscCode           String?
   panNumber          String?
-  documents          Json         @default("[]")
-  kpis               Json         @default("[]")
-  kras               Json         @default("[]")
+  documents          Json            @default("[]")
+  kpis               Json            @default("[]")
+  kras               Json            @default("[]")
   lastReviewDate     DateTime?
   nextReviewDate     DateTime?
   overallRating      Float?
   reviewRemarks      String?
-  createdAt          DateTime     @default(now())
-  updatedAt          DateTime     @updatedAt
-  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user               User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  shift              Shift?       @relation(fields: [shiftId], references: [id])
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  organization       Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user               User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shift              Shift?          @relation(fields: [shiftId], references: [id])
   shiftId            String?
 
   @@index([userId, organizationId])
@@ -1435,21 +1515,21 @@ model EnrollmentPayment {
 }
 
 model StudentFeeReceipt {
-  id              String       @id @default(uuid())
-  organizationId  String
-  enrollmentId    String
-  amount          Float
-  paymentMode     String
-  referenceNo     String?
-  receiptDate     DateTime     @default(now())
-  remarks         String?
-  recordedBy      String
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
-  
-  enrollment      Enrollment   @relation(fields: [enrollmentId], references: [id])
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  recorder        User         @relation(fields: [recordedBy], references: [id])
+  id             String   @id @default(uuid())
+  organizationId String
+  enrollmentId   String
+  amount         Float
+  paymentMode    String
+  referenceNo    String?
+  receiptDate    DateTime @default(now())
+  remarks        String?
+  recordedBy     String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  enrollment   Enrollment   @relation(fields: [enrollmentId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  recorder     User         @relation(fields: [recordedBy], references: [id])
 
   @@index([enrollmentId])
   @@index([organizationId])

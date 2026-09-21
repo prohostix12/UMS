@@ -13,6 +13,17 @@ import {
   updateProgram,
   deleteProgram,
   activateProgram,
+  getProgramModules,
+  createProgramModule,
+  getProgramSemesters,
+  createProgramSemester,
+  updateProgramSemester,
+  deleteProgramSemester,
+  updateProgramModule,
+  deleteProgramModule,
+  getExaminations,
+  createExamination,
+  updateExaminationModules,
   getStudyCenters,
   getStudyCenter,
   createStudyCenter,
@@ -77,6 +88,22 @@ router.route('/programs/:id')
   .put(authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin', 'academic_admin'), updateProgram)
   .delete(authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin', 'academic_admin'), deleteProgram);
 router.put('/programs/:id/activate', authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin'), activateProgram);
+router.route('/programs/:programId/semesters')
+  .get(getProgramSemesters)
+  .post(authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin', 'academic_admin'), createProgramSemester);
+router.route('/programs/:programId/semesters/:semesterId')
+  .put(authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin', 'academic_admin'), updateProgramSemester)
+  .delete(authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin', 'academic_admin'), deleteProgramSemester);
+router.route('/programs/:programId/modules')
+  .get(getProgramModules)
+  .post(authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin', 'academic_admin'), createProgramModule);
+router.route('/programs/:programId/modules/:moduleId')
+  .put(authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin', 'academic_admin'), updateProgramModule)
+  .delete(authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin', 'academic_admin'), deleteProgramModule);
+router.route('/examinations')
+  .get(getExaminations)
+  .post(authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin', 'academic_admin'), createExamination);
+router.put('/examinations/:id/modules', authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin', 'academic_admin'), updateExaminationModules);
 
 // Onboarding — document verification (must be before /centers/:id to avoid route conflict)
 router.get('/centers/pending-verification', authorize('ops_admin', 'ops_sub_admin', 'employee'), getPendingVerificationCenters);

@@ -292,7 +292,12 @@ function App() {
     if (user.role === 'academic_admin') {
       return [
         { id: 'dashboard', label: 'Dashboard' },
-        { id: 'academic-admin', label: 'Academic Administration' },
+        { id: 'academic-session', label: 'Academic Session' },
+        { id: 'academic-programs', label: 'Programs' },
+        { id: 'academic-semesters', label: 'Semester' },
+        { id: 'academic-modules', label: 'Modules' },
+        { id: 'academic-calendar', label: 'Academic Calendar' },
+        { id: 'academic-examination', label: 'Examination' },
       ];
     }
 

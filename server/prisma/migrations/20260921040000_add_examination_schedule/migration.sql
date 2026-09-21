@@ -1,0 +1,1 @@
+ALTER TABLE "examinations" ADD COLUMN IF NOT EXISTS "schedule" JSONB NOT NULL DEFAULT '[]';

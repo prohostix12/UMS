@@ -196,6 +196,220 @@ export const activateProgram = asyncHandler(async (req: AuthRequest, res: Respon
   res.json({ success: true, data: { ...program, _id: program.id } });
 });
 
+const normalizeSemesterDate = (value: unknown, fieldName: string) => {
+  const date = new Date(String(value));
+  if (!value || Number.isNaN(date.getTime())) {
+    const error = new Error(`${fieldName} must be a valid date`);
+    (error as any).statusCode = 400;
+    throw error;
+  }
+  return date;
+};
+
+export const getProgramSemesters = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const program = await prisma.program.findFirst({ where: { id: req.params.programId, organizationId: req.user.organizationId, isDeleted: false }, select: { id: true } });
+  if (!program) {
+    res.status(404).json({ success: false, message: 'Program not found' });
+    return;
+  }
+  const semesters = await prisma.semester.findMany({ where: { programId: program.id, organizationId: req.user.organizationId }, orderBy: { semesterNumber: 'asc' } });
+  res.json({ success: true, count: semesters.length, data: semesters });
+});
+
+export const createProgramSemester = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { semesterName, semesterNumber, academicSessionId } = req.body;
+  if (!semesterName?.trim() || !academicSessionId || !Number.isInteger(Number(semesterNumber)) || Number(semesterNumber) < 1) {
+    res.status(400).json({ success: false, message: 'Semester name, number, and academic session are required' });
+    return;
+  }
+  const program = await prisma.program.findFirst({ where: { id: req.params.programId, organizationId: req.user.organizationId, isDeleted: false }, select: { id: true } });
+  if (!program) {
+    res.status(404).json({ success: false, message: 'Program not found' });
+    return;
+  }
+  const semester = await prisma.semester.create({ data: {
+    organizationId: req.user.organizationId,
+    programId: program.id,
+    academicSessionId,
+    semesterName: semesterName.trim(),
+    semesterNumber: Number(semesterNumber),
+    startDate: normalizeSemesterDate(req.body.startDate, 'Start Date'),
+    endDate: normalizeSemesterDate(req.body.endDate, 'End Date'),
+    status: req.body.status || 'active',
+  } });
+  res.status(201).json({ success: true, data: semester });
+});
+
+export const updateProgramSemester = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const existing = await prisma.semester.findFirst({ where: { id: req.params.semesterId, programId: req.params.programId, organizationId: req.user.organizationId } });
+  if (!existing) { res.status(404).json({ success: false, message: 'Semester not found' }); return; }
+  const { semesterName, semesterNumber, startDate, endDate, status } = req.body;
+  const semester = await prisma.semester.update({ where: { id: existing.id }, data: {
+    semesterName: semesterName.trim(), semesterNumber: Number(semesterNumber),
+    startDate: normalizeSemesterDate(startDate, 'Start Date'), endDate: normalizeSemesterDate(endDate, 'End Date'), status,
+  } });
+  res.json({ success: true, data: semester });
+});
+
+export const deleteProgramSemester = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const existing = await prisma.semester.findFirst({ where: { id: req.params.semesterId, programId: req.params.programId, organizationId: req.user.organizationId }, select: { id: true } });
+  if (!existing) { res.status(404).json({ success: false, message: 'Semester not found' }); return; }
+  await prisma.semester.delete({ where: { id: existing.id } });
+  res.json({ success: true, data: {} });
+});
+
+export const getProgramModules = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const program = await prisma.program.findFirst({
+    where: { id: req.params.programId, organizationId: req.user.organizationId, isDeleted: false },
+    select: { id: true }
+  });
+  if (!program) {
+    res.status(404).json({ success: false, message: 'Program not found' });
+    return;
+  }
+
+  const modules = await prisma.module.findMany({
+    where: { programId: program.id, organizationId: req.user.organizationId, ...(req.query.semesterId ? { semesterId: String(req.query.semesterId) } : {}) },
+    orderBy: { moduleCode: 'asc' }
+  });
+  res.json({ success: true, count: modules.length, data: modules });
+});
+
+export const createProgramModule = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { moduleCode, moduleName, moduleType, academicSessionId, semesterId } = req.body;
+  if (!moduleCode?.trim() || !moduleName?.trim() || !moduleType?.trim()) {
+    res.status(400).json({ success: false, message: 'Module code, name, and type are required' });
+    return;
+  }
+
+  const program = await prisma.program.findFirst({
+    where: { id: req.params.programId, organizationId: req.user.organizationId, isDeleted: false },
+    select: { id: true, academicSessionId: true }
+  });
+  if (!program) {
+    res.status(404).json({ success: false, message: 'Program not found' });
+    return;
+  }
+
+  if (semesterId) {
+    const semester = await prisma.semester.findFirst({ where: { id: semesterId, programId: program.id, organizationId: req.user.organizationId } });
+    if (!semester) {
+      res.status(400).json({ success: false, message: 'Semester does not belong to this program' });
+      return;
+    }
+  }
+
+  const module = await prisma.module.create({
+    data: {
+      organizationId: req.user.organizationId,
+      programId: program.id,
+      academicSessionId: academicSessionId || program.academicSessionId || null,
+      semesterId: semesterId || null,
+      moduleCode: moduleCode.trim(),
+      moduleName: moduleName.trim(),
+      moduleType: moduleType.trim(),
+    }
+  });
+  res.status(201).json({ success: true, data: module });
+});
+
+export const updateProgramModule = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { moduleCode, moduleName, moduleType, semesterId } = req.body;
+  if (!moduleCode?.trim() || !moduleName?.trim() || !moduleType?.trim()) {
+    res.status(400).json({ success: false, message: 'Module code, name, and type are required' });
+    return;
+  }
+
+  const existingModule = await prisma.module.findFirst({
+    where: {
+      id: req.params.moduleId,
+      programId: req.params.programId,
+      organizationId: req.user.organizationId,
+    }
+  });
+  if (!existingModule) {
+    res.status(404).json({ success: false, message: 'Module not found' });
+    return;
+  }
+
+  if (semesterId) {
+    const semester = await prisma.semester.findFirst({ where: { id: semesterId, programId: req.params.programId, organizationId: req.user.organizationId } });
+    if (!semester) {
+      res.status(400).json({ success: false, message: 'Semester does not belong to this program' });
+      return;
+    }
+  }
+
+  const module = await prisma.module.update({
+    where: { id: existingModule.id },
+    data: {
+      moduleCode: moduleCode.trim(),
+      moduleName: moduleName.trim(),
+      moduleType: moduleType.trim(),
+      semesterId: semesterId || null,
+    }
+  });
+  res.json({ success: true, data: module });
+});
+
+export const deleteProgramModule = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const existingModule = await prisma.module.findFirst({
+    where: {
+      id: req.params.moduleId,
+      programId: req.params.programId,
+      organizationId: req.user.organizationId,
+    },
+    select: { id: true }
+  });
+  if (!existingModule) {
+    res.status(404).json({ success: false, message: 'Module not found' });
+    return;
+  }
+
+  await prisma.module.delete({ where: { id: existingModule.id } });
+  res.json({ success: true, data: {} });
+});
+
+export const getExaminations = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const examinations = await prisma.examination.findMany({
+    where: {
+      organizationId: req.user.organizationId,
+      ...(req.query.academicSessionId && { academicSessionId: String(req.query.academicSessionId) }),
+      ...(req.query.programId && { programId: String(req.query.programId) }),
+      ...(req.query.semesterId && { semesterId: String(req.query.semesterId) }),
+      ...(req.query.status && { status: String(req.query.status) }),
+    },
+    include: { academicSession: true, program: true, semester: true },
+    orderBy: { startDate: 'desc' },
+  });
+  res.json({ success: true, count: examinations.length, data: examinations });
+});
+
+export const createExamination = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { examinationName, examinationType, academicSessionId, programId, semesterId, startDate, endDate, description, moduleIds, schedule } = req.body;
+  if (!examinationName?.trim() || !examinationType || !academicSessionId || !programId || !semesterId || !startDate || !endDate) {
+    res.status(400).json({ success: false, message: 'All examination fields except description are required' });
+    return;
+  }
+  const semester = await prisma.semester.findFirst({ where: { id: semesterId, programId, academicSessionId, organizationId: req.user.organizationId } });
+  if (!semester) { res.status(400).json({ success: false, message: 'Semester does not match the selected session and program' }); return; }
+  const examination = await prisma.examination.create({ data: {
+    organizationId: req.user.organizationId, examinationName: examinationName.trim(), examinationType,
+    academicSessionId, programId, semesterId, startDate: normalizeSessionDate(startDate, 'Start Date'),
+    endDate: normalizeSessionDate(endDate, 'End Date'), description: description?.trim() || null,
+    moduleIds: Array.isArray(moduleIds) ? moduleIds : [],
+    schedule: Array.isArray(schedule) ? schedule : [],
+  } });
+  res.status(201).json({ success: true, data: examination });
+});
+
+export const updateExaminationModules = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const examination = await prisma.examination.findFirst({ where: { id: req.params.id, organizationId: req.user.organizationId } });
+  if (!examination) { res.status(404).json({ success: false, message: 'Examination not found' }); return; }
+  const updated = await prisma.examination.update({ where: { id: examination.id }, data: { moduleIds: Array.isArray(req.body.moduleIds) ? req.body.moduleIds : [] } });
+  res.json({ success: true, data: updated });
+});
+
 // Study Centers
 export const getStudyCenters = asyncHandler(async (req: AuthRequest, res: Response) => {
   const where: any = { organizationId: req.user.organizationId };

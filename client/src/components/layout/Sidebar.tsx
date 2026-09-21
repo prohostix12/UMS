@@ -176,7 +176,12 @@ const navItems: NavItem[] = [
     icon: GraduationCap,
     roles: ['academic_admin'],
     children: [
+      { id: 'academic-session', label: 'Academic Session', icon: Calendar, roles: ['academic_admin'] },
       { id: 'academic-programs', label: 'Programs', icon: BookOpen, roles: ['academic_admin'] },
+      { id: 'academic-semesters', label: 'Semester', icon: Calendar, roles: ['academic_admin'] },
+      { id: 'academic-modules', label: 'Modules', icon: BookOpen, roles: ['academic_admin'] },
+      { id: 'academic-calendar', label: 'Academic Calendar', icon: Calendar, roles: ['academic_admin'] },
+      { id: 'academic-examination', label: 'Examination', icon: FileText, roles: ['academic_admin'] },
     ],
   },
   {
