@@ -51,6 +51,7 @@ interface Department {
 
 export function UsersPanel() {
   const { user: currentUser } = useAuth();
+  const isGlobalSuperadmin = currentUser?.role === 'superadmin' && !currentUser.universityId;
   const [users, setUsers] = useState<User[]>([]);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -210,7 +211,7 @@ export function UsersPanel() {
       email: '',
       password: '',
       role: 'employee',
-      organizationId: currentUser?.role === 'superadmin' ? '' : (currentUser?.organizationId || ''),
+      organizationId: isGlobalSuperadmin ? '' : (currentUser?.organizationId || ''),
       departmentId: '',
       canAddPrograms: false,
     });
@@ -501,7 +502,7 @@ export function UsersPanel() {
                   required={!editingUser}
                 />
               </div>
-              {currentUser?.role === 'superadmin' && (
+              {isGlobalSuperadmin && (
                 <div className="space-y-2">
                   <Label htmlFor="organizationId">University *</Label>
                   <Select

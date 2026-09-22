@@ -52,6 +52,9 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
   const [examinationSchedule, setExaminationSchedule] = useState<any[]>([]);
   const [examinationFilters, setExaminationFilters] = useState({ sessionId: 'all', programId: 'all', semesterId: 'all', status: 'all' });
   const [examinationForm, setExaminationForm] = useState({ examinationName: '', examinationType: '', academicSessionId: '', programId: '', semesterId: '', startDate: '', endDate: '', description: '' });
+  const [selectedExamination, setSelectedExamination] = useState<any | null>(null);
+  const [viewExaminationDialogOpen, setViewExaminationDialogOpen] = useState(false);
+  const [editingExaminationId, setEditingExaminationId] = useState<string | null>(null);
 
   const fetchSessions = async () => {
     try {
@@ -120,6 +123,7 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
   const filteredExaminations = examinations.filter(examination => (examinationFilters.sessionId === 'all' || examination.academicSessionId === examinationFilters.sessionId) && (examinationFilters.programId === 'all' || examination.programId === examinationFilters.programId) && (examinationFilters.semesterId === 'all' || examination.semesterId === examinationFilters.semesterId) && (examinationFilters.status === 'all' || examination.status === examinationFilters.status));
 
   const openExaminationDialog = () => {
+    setEditingExaminationId(null);
     setExaminationStep(1);
     setSelectedModuleIds([]);
     setExaminationSchedule([]);
@@ -127,28 +131,74 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
     setExaminationDialogOpen(true);
   };
 
+  const handleEditExamination = (examination: any) => {
+    setEditingExaminationId(examination.id);
+    setExaminationForm({
+      examinationName: examination.examinationName || '',
+      examinationType: examination.examinationType || '',
+      academicSessionId: examination.academicSessionId || '',
+      programId: examination.programId || '',
+      semesterId: examination.semesterId || '',
+      startDate: examination.startDate ? new Date(examination.startDate).toISOString().slice(0, 10) : '',
+      endDate: examination.endDate ? new Date(examination.endDate).toISOString().slice(0, 10) : '',
+      description: examination.description || '',
+    });
+    setSelectedModuleIds(Array.isArray(examination.moduleIds) ? examination.moduleIds : []);
+    setExaminationSchedule(Array.isArray(examination.schedule) ? examination.schedule.map((row: any) => ({
+      moduleId: row.moduleId || '',
+      date: row.date || '',
+      startTime: row.startTime || '09:30',
+      endTime: row.endTime || '12:30',
+      examRoom: row.examRoom || '',
+      maxMarks: row.maxMarks ?? '',
+      passingMarks: row.passingMarks ?? '',
+      examDuration: row.examDuration ?? '120',
+    })) : []);
+    setExaminationStep(1);
+    setExaminationDialogOpen(true);
+  };
+
   const submitExamination = async () => {
     try {
-      await api.post('/operations/examinations', { ...examinationForm, moduleIds: selectedModuleIds, schedule: examinationSchedule });
-      toast.success('Examination created');
+      const payload = { ...examinationForm, moduleIds: selectedModuleIds, schedule: examinationSchedule };
+      if (editingExaminationId) {
+        await api.put(`/operations/examinations/${editingExaminationId}`, payload);
+        toast.success('Examination updated');
+      } else {
+        await api.post('/operations/examinations', payload);
+        toast.success('Examination created');
+      }
       setExaminationDialogOpen(false);
+      setEditingExaminationId(null);
       fetchExaminations();
-    } catch (error: any) { toast.error(error.response?.data?.message || 'Failed to create examination'); }
+    } catch (error: any) { toast.error(error.response?.data?.message || 'Failed to save examination'); }
+  };
+
+  const buildScheduleRow = (moduleId = '', date = '', overrides: Partial<Record<string, string>> = {}) => ({
+    moduleId,
+    date,
+    startTime: '09:30',
+    endTime: '12:30',
+    examRoom: '',
+    maxMarks: '',
+    passingMarks: '',
+    examDuration: '120',
+    ...overrides,
+  });
+
+  const openExaminationDetails = (examination: any) => {
+    setSelectedExamination(examination);
+    setViewExaminationDialogOpen(true);
   };
 
   const goToSchedule = () => {
-    setExaminationSchedule(selectedModuleIds.map((moduleId, index) => ({
-      moduleId,
-      date: index === 0 ? examinationForm.startDate : '',
-      startTime: '09:30',
-      endTime: '12:30',
-    })));
+    setExaminationSchedule(selectedModuleIds.map((moduleId, index) => buildScheduleRow(moduleId, index === 0 ? examinationForm.startDate : '')));
     setExaminationStep(3);
   };
 
   const addScheduleRow = () => {
     const nextModule = examinationModules.find(module => !examinationSchedule.some(row => row.moduleId === module.id));
-    setExaminationSchedule(current => [...current, { moduleId: nextModule?.id || '', date: '', startTime: '09:30', endTime: '12:30' }]);
+    setExaminationSchedule(current => [...current, buildScheduleRow(nextModule?.id || '')]);
   };
 
   const updateScheduleRow = (index: number, field: string, value: string) => {
@@ -454,7 +504,7 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
       {initialTab === 'academic-examination' && <Card>
         <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"><div><CardTitle>Examinations</CardTitle><p className="text-sm text-muted-foreground">Create and manage examinations</p></div><div className="flex flex-wrap gap-2"><Button onClick={openExaminationDialog}><Plus className="w-4 h-4 mr-2" />Create Examination</Button><Button variant="outline" onClick={() => toast.info('Manage Examination is coming soon')}>Manage Examination</Button><Button variant="outline" onClick={() => toast.info('Examination Schedule is coming soon')}>Examination Schedule</Button></div></CardHeader>
         <CardContent className="space-y-5"><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3"><Select value={examinationFilters.sessionId} onValueChange={sessionId => setExaminationFilters({ ...examinationFilters, sessionId })}><SelectTrigger><SelectValue placeholder="All Sessions" /></SelectTrigger><SelectContent><SelectItem value="all">All Sessions</SelectItem>{sessions.map(session => <SelectItem key={session.id} value={session.id}>{displaySession(session.id)}</SelectItem>)}</SelectContent></Select><Select value={examinationFilters.programId} onValueChange={programId => setExaminationFilters({ ...examinationFilters, programId })}><SelectTrigger><SelectValue placeholder="All Programs" /></SelectTrigger><SelectContent><SelectItem value="all">All Programs</SelectItem>{programs.map(program => <SelectItem key={program.id} value={program.id}>{program.name}</SelectItem>)}</SelectContent></Select><Select value={examinationFilters.semesterId} onValueChange={semesterId => setExaminationFilters({ ...examinationFilters, semesterId })}><SelectTrigger><SelectValue placeholder="All Semesters" /></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(semester => <SelectItem key={semester.id} value={semester.id}>{semester.semesterName}</SelectItem>)}</SelectContent></Select><Select value={examinationFilters.status} onValueChange={status => setExaminationFilters({ ...examinationFilters, status })}><SelectTrigger><SelectValue placeholder="All Statuses" /></SelectTrigger><SelectContent><SelectItem value="all">All Statuses</SelectItem><SelectItem value="draft">Draft</SelectItem><SelectItem value="published">Published</SelectItem><SelectItem value="completed">Completed</SelectItem></SelectContent></Select></div>
-          {examinationLoading ? <p className="py-8 text-center text-muted-foreground">Loading examinations...</p> : filteredExaminations.length === 0 ? <p className="py-8 text-center text-muted-foreground">No examinations created.</p> : <div className="space-y-3">{filteredExaminations.map(examination => <div key={examination.id} className="rounded-lg border p-4 space-y-3"><div><p className="font-semibold">{examination.examinationName}</p><p className="text-sm text-muted-foreground">{examination.program?.name || 'Program not found'}</p></div><div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm"><span>Semester: {examination.semester?.semesterName}</span><span>Session: {displaySession(examination.academicSessionId)}</span></div><div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm"><span>Modules: {Array.isArray(examination.moduleIds) ? examination.moduleIds.length : 0}</span><span>Examination Date: {new Date(examination.startDate).toLocaleDateString()} - {new Date(examination.endDate).toLocaleDateString()}</span><span>Status: <Badge variant="outline">{examination.status}</Badge></span></div><div className="flex justify-end gap-2"><Button size="sm" variant="outline" onClick={() => toast.info('Examination details view is coming soon')}>View</Button><Button size="sm" variant="outline" onClick={() => toast.info('Examination editing is coming soon')}>Edit</Button></div></div>)}</div>}
+          {examinationLoading ? <p className="py-8 text-center text-muted-foreground">Loading examinations...</p> : filteredExaminations.length === 0 ? <p className="py-8 text-center text-muted-foreground">No examinations created.</p> : <div className="space-y-3">{filteredExaminations.map(examination => <div key={examination.id} className="rounded-lg border p-4 space-y-3"><div><p className="font-semibold">{examination.examinationName}</p><p className="text-sm text-muted-foreground">Examination: {examination.examinationType}</p></div><div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm"><span>Program: {examination.program?.name || 'Program not found'}</span><span>Semester: {examination.semester?.semesterName}</span></div><div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm"><span>Modules: {Array.isArray(examination.moduleIds) ? examination.moduleIds.length : 0}</span><span>Examination Date: {new Date(examination.startDate).toLocaleDateString()} - {new Date(examination.endDate).toLocaleDateString()}</span><span>Status: <Badge variant="outline">{examination.status}</Badge></span></div><div className="flex justify-end gap-2"><Button size="sm" variant="outline" onClick={() => openExaminationDetails(examination)}>View</Button><Button size="sm" variant="outline" onClick={() => handleEditExamination(examination)}>Edit</Button></div></div>)}</div>}
         </CardContent>
       </Card>}
 
@@ -666,7 +716,7 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
       </Dialog>
 
       <Dialog open={examinationDialogOpen} onOpenChange={setExaminationDialogOpen}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-6xl">
           <DialogHeader><DialogTitle>{examinationStep === 1 ? 'Create Examination' : examinationStep === 2 ? 'Select Examination Modules' : 'Examination Schedule'}</DialogTitle></DialogHeader>
           {examinationStep === 1 ? <form onSubmit={event => { event.preventDefault(); setExaminationStep(2); }} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -686,10 +736,71 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
             <p className="text-sm text-muted-foreground">Selected: {selectedModuleIds.length}/{examinationModules.length}</p>
             <div className="flex gap-2"><Button type="button" variant="outline" onClick={() => setExaminationStep(1)}>&lt;- Back</Button><Button type="button" className="flex-1" onClick={goToSchedule}>Next -&gt;</Button></div>
           </div> : <div className="space-y-4">
-            <div className="overflow-x-auto rounded-lg border"><div className="min-w-[640px]"><div className="grid grid-cols-[1.2fr_1.5fr_1fr_1fr] gap-3 border-b bg-muted/40 px-4 py-3 text-sm font-semibold"><span>Date</span><span>Module</span><span>Start</span><span>End</span></div>{examinationSchedule.map((row, index) => <div key={`${row.moduleId}-${index}`} className="grid grid-cols-[1.2fr_1.5fr_1fr_1fr] gap-3 items-center border-b px-4 py-3 last:border-b-0"><Input type="date" value={row.date} min={examinationForm.startDate} max={examinationForm.endDate} onChange={event => updateScheduleRow(index, 'date', event.target.value)} /><Select value={row.moduleId} onValueChange={moduleId => updateScheduleRow(index, 'moduleId', moduleId)}><SelectTrigger><SelectValue placeholder="Select module" /></SelectTrigger><SelectContent>{examinationModules.map(module => <SelectItem key={module.id} value={module.id}>{module.moduleName}</SelectItem>)}</SelectContent></Select><Input type="time" value={row.startTime} onChange={event => updateScheduleRow(index, 'startTime', event.target.value)} /><Input type="time" value={row.endTime} onChange={event => updateScheduleRow(index, 'endTime', event.target.value)} /></div>)}</div></div>
+            <div className="overflow-x-auto rounded-lg border"><div className="min-w-[1150px]"><div className="grid grid-cols-[1.1fr_1.6fr_1fr_1fr_1.1fr_0.9fr_0.9fr_1fr] gap-3 border-b bg-muted/40 px-4 py-3 text-sm font-semibold"><span>Date</span><span>Module</span><span>Start</span><span>End</span><span>Exam room</span><span>Maximum marks</span><span>Passing marks</span><span>Exam duration</span></div>{examinationSchedule.map((row, index) => <div key={`${row.moduleId}-${index}`} className="grid grid-cols-[1.1fr_1.6fr_1fr_1fr_1.1fr_0.9fr_0.9fr_1fr] gap-3 items-center border-b px-4 py-3 last:border-b-0"><Input type="date" value={row.date} min={examinationForm.startDate} max={examinationForm.endDate} onChange={event => updateScheduleRow(index, 'date', event.target.value)} /><Select value={row.moduleId} onValueChange={moduleId => updateScheduleRow(index, 'moduleId', moduleId)}><SelectTrigger><SelectValue placeholder="Select module" /></SelectTrigger><SelectContent>{examinationModules.map(module => <SelectItem key={module.id} value={module.id}>{module.moduleName}</SelectItem>)}</SelectContent></Select><Input type="time" value={row.startTime} onChange={event => updateScheduleRow(index, 'startTime', event.target.value)} /><Input type="time" value={row.endTime} onChange={event => updateScheduleRow(index, 'endTime', event.target.value)} /><Input value={row.examRoom || ''} placeholder="Room A" onChange={event => updateScheduleRow(index, 'examRoom', event.target.value)} /><Input type="number" min="0" value={row.maxMarks || ''} placeholder="100" onChange={event => updateScheduleRow(index, 'maxMarks', event.target.value)} /><Input type="number" min="0" value={row.passingMarks || ''} placeholder="40" onChange={event => updateScheduleRow(index, 'passingMarks', event.target.value)} /><Input type="number" min="1" value={row.examDuration || ''} placeholder="120" onChange={event => updateScheduleRow(index, 'examDuration', event.target.value)} /></div>)}</div></div>
             <Button type="button" variant="outline" onClick={addScheduleRow}>+ Add Schedule</Button>
             <div className="flex gap-2"><Button type="button" variant="outline" onClick={() => setExaminationStep(2)}>&lt;- Back</Button><Button type="button" className="flex-1" onClick={submitExamination}>Save Examination</Button></div>
           </div>}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={viewExaminationDialogOpen} onOpenChange={setViewExaminationDialogOpen}>
+        <DialogContent className="max-w-7xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Create Examination</DialogTitle></DialogHeader>
+          {selectedExamination ? (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground uppercase tracking-wide">Examination name</p><p className="mt-1 font-semibold">{selectedExamination.examinationName}</p></div>
+                <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground uppercase tracking-wide">Type</p><p className="mt-1 font-semibold">{selectedExamination.examinationType}</p></div>
+                <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground uppercase tracking-wide">Session</p><p className="mt-1 font-semibold">{displaySession(selectedExamination.academicSessionId)}</p></div>
+                <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground uppercase tracking-wide">Program</p><p className="mt-1 font-semibold">{programs.find(program => program.id === selectedExamination.programId)?.name || selectedExamination.program?.name || 'Program not found'}</p></div>
+                <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground uppercase tracking-wide">Semester</p><p className="mt-1 font-semibold">{semesters.find(semester => semester.id === selectedExamination.semesterId)?.semesterName || selectedExamination.semester?.semesterName || 'Semester not found'}</p></div>
+                <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground uppercase tracking-wide">Status</p><p className="mt-1 font-semibold">{selectedExamination.status}</p></div>
+                <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground uppercase tracking-wide">Start date</p><p className="mt-1 font-semibold">{new Date(selectedExamination.startDate).toLocaleDateString()}</p></div>
+                <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground uppercase tracking-wide">End date</p><p className="mt-1 font-semibold">{new Date(selectedExamination.endDate).toLocaleDateString()}</p></div>
+                <div className="rounded-lg border p-3 md:col-span-2 xl:col-span-1"><p className="text-xs text-muted-foreground uppercase tracking-wide">Modules</p><p className="mt-1 font-semibold">{Array.isArray(selectedExamination.moduleIds) ? selectedExamination.moduleIds.length : 0}</p></div>
+              </div>
+
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Description</p>
+                <p className="mt-2 text-sm whitespace-pre-wrap">{selectedExamination.description || 'No description provided.'}</p>
+              </div>
+
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-3">Selected modules</p>
+                <div className="flex flex-wrap gap-2">
+                  {Array.isArray(selectedExamination.moduleIds) && selectedExamination.moduleIds.length > 0 ? selectedExamination.moduleIds.map((moduleId: string) => {
+                    const module = modules.find(item => item.id === moduleId);
+                    return <Badge key={moduleId} variant="outline">{module?.moduleName || moduleId}</Badge>;
+                  }) : <span className="text-sm text-muted-foreground">No modules selected.</span>}
+                </div>
+              </div>
+
+              <div className="rounded-lg border overflow-hidden">
+                <div className="overflow-x-auto">
+                  <div className="min-w-[1100px]">
+                    <div className="grid grid-cols-[1.1fr_1.6fr_1fr_1fr_1.1fr_0.9fr_0.9fr_1fr] gap-3 border-b bg-muted/40 px-4 py-3 text-sm font-semibold">
+                      <span>Date</span><span>Module</span><span>Start</span><span>End</span><span>Exam room</span><span>Maximum marks</span><span>Passing marks</span><span>Exam duration</span>
+                    </div>
+                    {Array.isArray(selectedExamination.schedule) && selectedExamination.schedule.length > 0 ? selectedExamination.schedule.map((row: any, index: number) => {
+                      const rowModule = modules.find(module => module.id === row.moduleId) || examinationModules.find(module => module.id === row.moduleId);
+                      return (
+                        <div key={`${row.moduleId || 'module'}-${index}`} className="grid grid-cols-[1.1fr_1.6fr_1fr_1fr_1.1fr_0.9fr_0.9fr_1fr] gap-3 items-center border-b px-4 py-3 last:border-b-0 text-sm">
+                          <span>{row.date ? new Date(row.date).toLocaleDateString() : '-'}</span>
+                          <span>{rowModule?.moduleName || row.moduleId || 'Not selected'}</span>
+                          <span>{row.startTime || '-'}</span>
+                          <span>{row.endTime || '-'}</span>
+                          <span>{row.examRoom || '-'}</span>
+                          <span>{row.maxMarks ?? '-'}</span>
+                          <span>{row.passingMarks ?? '-'}</span>
+                          <span>{row.examDuration ? `${row.examDuration} mins` : '-'}</span>
+                        </div>
+                      );
+                    }) : <div className="px-4 py-6 text-sm text-muted-foreground">No examination schedule created.</div>}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : <p className="text-sm text-muted-foreground">No examination selected.</p>}
         </DialogContent>
       </Dialog>
 

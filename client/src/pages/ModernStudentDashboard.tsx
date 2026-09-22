@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   GraduationCap, 
   BookOpen, 
+  Bell,
   Download, 
   FileText, 
   ClipboardList, 
@@ -22,8 +23,11 @@ export function ModernStudentDashboard() {
   const { logout } = useAuth();
   const [student, setStudent] = useState<any>(null);
   const [materials, setMaterials] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selectedSemester, setSelectedSemester] = useState<string>('1');
+  const [activeSection, setActiveSection] = useState<'portal' | 'notifications'>('portal');
 
   useEffect(() => {
     fetchStudentData();
@@ -48,6 +52,31 @@ export function ModernStudentDashboard() {
       toast.error('Failed to load dashboard data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchNotifications = async () => {
+    try {
+      const response = await api.get('/notifications');
+      setNotifications(response.data.data || []);
+      setUnreadNotifications(response.data.unreadCount || 0);
+    } catch (error) {
+      toast.error('Failed to load notifications');
+    }
+  };
+
+  const openNotifications = () => {
+    setActiveSection('notifications');
+    fetchNotifications();
+  };
+
+  const markAllNotificationsRead = async () => {
+    try {
+      await api.put('/notifications/read-all');
+      setNotifications(previous => previous.map(notification => ({ ...notification, read: true })));
+      setUnreadNotifications(0);
+    } catch (error) {
+      toast.error('Failed to mark notifications as read');
     }
   };
 
@@ -139,6 +168,20 @@ export function ModernStudentDashboard() {
             </div>
           </div>
           <div className="flex items-center gap-4">
+            <Button
+              variant={activeSection === 'notifications' ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={openNotifications}
+              className="relative gap-2"
+            >
+              <Bell className="w-4 h-4" />
+              <span className="hidden sm:inline">Notifications</span>
+              {unreadNotifications > 0 && (
+                <Badge className="min-w-5 h-5 px-1 justify-center text-[10px]">
+                  {unreadNotifications}
+                </Badge>
+              )}
+            </Button>
             <div className="hidden md:block text-right">
               <p className="text-sm font-medium">{student.name}</p>
               <p className="text-xs text-muted-foreground">{student.enrollmentNo}</p>
@@ -151,6 +194,64 @@ export function ModernStudentDashboard() {
         </div>
       </header>
 
+      <div className="flex">
+        <aside className="hidden md:block w-56 shrink-0 border-r bg-background min-h-[calc(100vh-4rem)] p-4">
+          <p className="px-3 mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Main Navigation</p>
+          <Button
+            variant={activeSection === 'notifications' ? 'secondary' : 'ghost'}
+            className="w-full justify-start gap-2"
+            onClick={openNotifications}
+          >
+            <Bell className="w-4 h-4" />
+            Notifications
+            {unreadNotifications > 0 && (
+              <Badge className="ml-auto min-w-5 h-5 px-1 justify-center text-[10px]">
+                {unreadNotifications}
+              </Badge>
+            )}
+          </Button>
+        </aside>
+
+        <div className="flex-1 min-w-0">
+        {activeSection === 'notifications' ? (
+        <main className="container mx-auto px-4 py-8 max-w-4xl">
+          <Card>
+            <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <CardTitle>Notifications</CardTitle>
+                <CardDescription>Updates and announcements for your student account.</CardDescription>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setActiveSection('portal')}>Back to Portal</Button>
+                <Button variant="secondary" onClick={markAllNotificationsRead} disabled={unreadNotifications === 0}>
+                  Mark all read
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {notifications.length === 0 ? (
+                <div className="py-12 text-center text-sm text-muted-foreground">No notifications yet.</div>
+              ) : (
+                notifications.map(notification => (
+                  <div key={notification.id} className={`rounded-lg border p-4 ${notification.read ? 'bg-background' : 'bg-primary/5 border-primary/20'}`}>
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="font-semibold">{notification.title}</p>
+                        <p className="text-sm text-muted-foreground mt-1">{notification.message}</p>
+                      </div>
+                      {!notification.read && <Badge>New</Badge>}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-3">
+                      {new Date(notification.createdAt).toLocaleString()}
+                    </p>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        </main>
+      ) : (
+      <>
       {/* Hero Welcome Section */}
       <section className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border-b py-8">
         <div className="container mx-auto px-4">
@@ -315,6 +416,10 @@ export function ModernStudentDashboard() {
           </Card>
         </div>
       </main>
+      </>
+      )}
+        </div>
+      </div>
     </div>
   );
 }

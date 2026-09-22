@@ -75,6 +75,7 @@ export interface Permission {
 export interface User {
   id: string;
   organizationId: string;
+  universityId?: string;
   departmentId?: string;
   subDepartmentId?: string;
   email: string;

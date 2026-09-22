@@ -128,9 +128,17 @@ export const getWalletTransactions = asyncHandler(async (req: AuthRequest, res: 
 
 export const getEnrollablePrograms = asyncHandler(async (req: AuthRequest, res: Response) => {
   const where: any = { organizationId: req.user.organizationId, status: 'active' as any };
+  const center = req.user.studyCenterId
+    ? await prisma.studyCenter.findUnique({
+        where: { id: req.user.studyCenterId },
+        select: { universityIds: true }
+      })
+    : null;
+  const linkedUniversityIds = center?.universityIds || [];
   
   if (req.user.studyCenterId) {
     where.OR = [
+      ...(linkedUniversityIds.length > 0 ? [{ universityId: { in: linkedUniversityIds } }] : []),
       {
         programAllocations: {
           some: {
@@ -205,6 +213,41 @@ export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
   }
   if (!studyCenterId) {
     res.status(400).json({ success: false, message: 'No study center assigned to your account' });
+    return;
+  }
+
+  const linkedCenter = await prisma.studyCenter.findUnique({
+    where: { id: studyCenterId },
+    select: { universityIds: true }
+  });
+  const linkedUniversityIds = linkedCenter?.universityIds || [];
+
+  const selectedProgram = await prisma.program.findFirst({
+    where: {
+      id: programId,
+      organizationId,
+      status: 'active' as any,
+      OR: [
+        ...(linkedUniversityIds.length > 0 ? [{ universityId: { in: linkedUniversityIds } }] : []),
+        {
+          programAllocations: {
+            some: { centerId: studyCenterId, isActive: true }
+          }
+        },
+        {
+          university: {
+            universityAllocations: {
+              some: { centerId: studyCenterId, isActive: true }
+            }
+          }
+        }
+      ]
+    },
+    select: { id: true, universityId: true }
+  });
+
+  if (!selectedProgram) {
+    res.status(403).json({ success: false, message: 'This program is not allocated to your study center' });
     return;
   }
 
@@ -283,19 +326,20 @@ export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
     return;
   }
 
+  // Hashing is CPU-bound and must happen outside the interactive transaction.
+  const defaultStudentPasswordHash = await bcrypt.hash('password123', 10);
+
   const enrollment = await prisma.$transaction(async (tx) => {
     // 1. Create or find User
     let user = await tx.user.findUnique({ where: { email: studentEmail } });
     if (!user) {
-      const rawPassword = 'password123'; // Default password for new students
-      const hashedPassword = await bcrypt.hash(rawPassword, 10);
       const userId = `STD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
       
       user = await tx.user.create({
         data: {
           userId,
           email: studentEmail,
-          password: hashedPassword,
+          password: defaultStudentPasswordHash,
           name: studentName,
           role: 'student',
           organizationId: organizationId,
@@ -372,7 +416,7 @@ export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
         student:      { connect: { id: student.id } },
       }
     });
-  });
+  }, { timeout: 15000 });
 
   // Notify Operations Users
   try {
@@ -438,12 +482,17 @@ export const getMyCenterStatus = asyncHandler(async (req: AuthRequest, res: Resp
     return;
   }
 
+  const centerAdminUniversityId = req.user.universityId || null;
+  const universityIds = center.universityIds?.length
+    ? center.universityIds
+    : (centerAdminUniversityId ? [centerAdminUniversityId] : []);
+
   const universities = await prisma.university.findMany({
-    where: { id: { in: center.universityIds || [] }, organizationId: req.user.organizationId },
+    where: { id: { in: universityIds }, organizationId: req.user.organizationId },
     select: { id: true, name: true, code: true }
   });
   const authFees = await prisma.universityAuthFee.findMany({
-    where: { organizationId: req.user.organizationId, universityId: { in: center.universityIds || [] } },
+    where: { organizationId: req.user.organizationId, universityId: { in: universityIds } },
     select: { universityId: true, feeDetails: true }
   });
   const feeByUniversity = new Map(authFees.map(fee => {
@@ -519,7 +568,12 @@ export const getActiveSessions = asyncHandler(async (req: AuthRequest, res: Resp
     status: 'active'
   };
   if (req.query.universityId) {
-    where.universityId = req.query.universityId as string;
+    const universityId = req.query.universityId as string;
+    where.OR = [
+      { universityId },
+      { universityId: null, programId: null },
+      { universityId: null, program: { universityId } }
+    ];
   }
   const sessions = await prisma.admissionSession.findMany({
     where,

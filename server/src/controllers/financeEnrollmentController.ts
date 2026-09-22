@@ -112,8 +112,33 @@ export const approveFinanceEnrollment = asyncHandler(async (req: AuthRequest, re
     });
   }
 
+  // Fall back to the university fee when no program-specific fee is configured.
+  if (!feeStructure && dbEnrollment.program?.universityId) {
+    feeStructure = await prisma.programFeeStructure.findFirst({
+      where: {
+        organizationId: req.user.organizationId,
+        universityId: dbEnrollment.program.universityId,
+        admissionSessionId: dbEnrollment.sessionId,
+        level: 'university'
+      }
+    });
+  }
+
+  if (!feeStructure && dbEnrollment.program?.universityId) {
+    feeStructure = await prisma.programFeeStructure.findFirst({
+      where: {
+        organizationId: req.user.organizationId,
+        universityId: dbEnrollment.program.universityId,
+        level: 'university'
+      }
+    });
+  }
+
   if (!feeStructure) {
-    res.status(400).json({ success: false, message: 'Program fee structure is not configured' });
+    res.status(400).json({
+      success: false,
+      message: 'No fee structure is configured for this program or its university. Please configure a program or university fee before approving the enrollment.'
+    });
     return;
   }
 

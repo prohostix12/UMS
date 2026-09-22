@@ -51,7 +51,8 @@ export const getUser = asyncHandler(async (req: AuthRequest, res: Response) => {
 });
 
 export const createUser = asyncHandler(async (req: AuthRequest, res: Response) => {
-  if (req.user.role !== 'superadmin') {
+  const isGlobalSuperadmin = req.user.role === 'superadmin' && !req.user.universityId;
+  if (!isGlobalSuperadmin) {
     req.body.organizationId = req.user.organizationId;
   }
 
@@ -97,6 +98,11 @@ export const updateUser = asyncHandler(async (req: AuthRequest, res: Response) =
   if (!userExists) {
     res.status(404).json({ success: false, message: 'User not found' });
     return;
+  }
+
+  const isGlobalSuperadmin = req.user.role === 'superadmin' && !req.user.universityId;
+  if (!isGlobalSuperadmin) {
+    req.body.organizationId = req.user.organizationId;
   }
 
   // If password is being updated, hash it

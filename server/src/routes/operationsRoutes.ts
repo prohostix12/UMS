@@ -23,6 +23,8 @@ import {
   deleteProgramModule,
   getExaminations,
   createExamination,
+  updateExamination,
+  deleteExamination,
   updateExaminationModules,
   getStudyCenters,
   getStudyCenter,
@@ -103,6 +105,9 @@ router.route('/programs/:programId/modules/:moduleId')
 router.route('/examinations')
   .get(getExaminations)
   .post(authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin', 'academic_admin'), createExamination);
+router.route('/examinations/:id')
+  .put(authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin', 'academic_admin'), updateExamination)
+  .delete(authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin', 'academic_admin'), deleteExamination);
 router.put('/examinations/:id/modules', authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin', 'academic_admin'), updateExaminationModules);
 
 // Onboarding — document verification (must be before /centers/:id to avoid route conflict)

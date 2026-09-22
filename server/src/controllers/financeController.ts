@@ -580,6 +580,9 @@ export const financeVerifyCenter = asyncHandler(async (req: AuthRequest, res: Re
 
 export const createStudyCenter = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { name, code, email, contact, referredById, ...rest } = req.body;
+  const linkedUniversityIds = req.user.universityId
+    ? [req.user.universityId]
+    : (Array.isArray(req.body.universityIds) ? req.body.universityIds : []);
   
   const rawPassword = 'admin123';
   const hashedPassword = await hashPassword(rawPassword);
@@ -597,6 +600,7 @@ export const createStudyCenter = asyncHandler(async (req: AuthRequest, res: Resp
       financeApprovedBy: req.user.id,
       financeApprovedAt: new Date(),
       referredBy: referredById || null,
+      universityIds: linkedUniversityIds,
       credentials: { userId, password: rawPassword }
     }
   });
@@ -605,6 +609,7 @@ export const createStudyCenter = asyncHandler(async (req: AuthRequest, res: Resp
     data: {
       userId,
       organizationId: req.user.organizationId,
+      universityId: linkedUniversityIds[0] || null,
       studyCenterId: center.id,
       email: email || `admin.${code}@example.com`,
       password: hashedPassword,

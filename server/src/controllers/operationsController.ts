@@ -403,6 +403,55 @@ export const createExamination = asyncHandler(async (req: AuthRequest, res: Resp
   res.status(201).json({ success: true, data: examination });
 });
 
+export const updateExamination = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const existing = await prisma.examination.findFirst({ where: { id: req.params.id, organizationId: req.user.organizationId } });
+  if (!existing) {
+    res.status(404).json({ success: false, message: 'Examination not found' });
+    return;
+  }
+
+  const { examinationName, examinationType, academicSessionId, programId, semesterId, startDate, endDate, description, moduleIds, schedule } = req.body;
+  if (!examinationName?.trim() || !examinationType || !academicSessionId || !programId || !semesterId || !startDate || !endDate) {
+    res.status(400).json({ success: false, message: 'All examination fields except description are required' });
+    return;
+  }
+
+  const semester = await prisma.semester.findFirst({ where: { id: semesterId, programId, academicSessionId, organizationId: req.user.organizationId } });
+  if (!semester) {
+    res.status(400).json({ success: false, message: 'Semester does not match the selected session and program' });
+    return;
+  }
+
+  const updated = await prisma.examination.update({
+    where: { id: existing.id },
+    data: {
+      examinationName: examinationName.trim(),
+      examinationType,
+      academicSessionId,
+      programId,
+      semesterId,
+      startDate: normalizeSessionDate(startDate, 'Start Date'),
+      endDate: normalizeSessionDate(endDate, 'End Date'),
+      description: description?.trim() || null,
+      moduleIds: Array.isArray(moduleIds) ? moduleIds : [],
+      schedule: Array.isArray(schedule) ? schedule : [],
+    }
+  });
+
+  res.json({ success: true, data: updated });
+});
+
+export const deleteExamination = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const existing = await prisma.examination.findFirst({ where: { id: req.params.id, organizationId: req.user.organizationId } });
+  if (!existing) {
+    res.status(404).json({ success: false, message: 'Examination not found' });
+    return;
+  }
+
+  await prisma.examination.delete({ where: { id: existing.id } });
+  res.json({ success: true, data: {} });
+});
+
 export const updateExaminationModules = asyncHandler(async (req: AuthRequest, res: Response) => {
   const examination = await prisma.examination.findFirst({ where: { id: req.params.id, organizationId: req.user.organizationId } });
   if (!examination) { res.status(404).json({ success: false, message: 'Examination not found' }); return; }
@@ -494,18 +543,25 @@ export const createStudyCenter = asyncHandler(async (req: AuthRequest, res: Resp
   // 2. Create in transaction
   const centerWithCreds = await prisma.$transaction(async (tx) => {
     const allowedFields = ['name', 'code', 'address', 'city', 'state', 'status', 'universityIds', 'programIds'];
+    const linkedUniversityIds = req.user.universityId
+      ? [req.user.universityId]
+      : (Array.isArray(req.body.universityIds) ? req.body.universityIds : []);
     const dbData: any = {
       organizationId: req.user.organizationId,
       status: isSales ? 'pending' : (req.body.status || 'pending'),
       referredBy: isSales ? req.user.id : (referredById === 'null' || !referredById ? null : referredById),
       credentials: { userId, password: rawPassword },
       email,
-      contact: req.body.contact || req.body.contactPhone || req.body.contactPerson || 'Not Provided'
+      contact: req.body.contact || req.body.contactPhone || req.body.contactPerson || 'Not Provided',
+      universityIds: linkedUniversityIds
     };
 
     for (const field of allowedFields) {
       if (req.body[field] !== undefined) dbData[field] = req.body[field];
     }
+
+    // A university-scoped admin cannot assign the center to another university.
+    dbData.universityIds = linkedUniversityIds;
 
     const center = await tx.studyCenter.create({ 
       data: dbData
@@ -520,6 +576,7 @@ export const createStudyCenter = asyncHandler(async (req: AuthRequest, res: Resp
         name: `${name} Admin`,
         role: 'center_admin',
         organizationId: req.user.organizationId,
+        universityId: linkedUniversityIds[0] || null,
         studyCenterId: center.id,
         status: 'active' as any
       }

@@ -59,21 +59,7 @@ export function EnrollStudentPanel() {
   const [selectedProgram, setSelectedProgram] = useState<Program | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string>('');
-  const [selectedUniversityId, setSelectedUniversityId] = useState<string>('');
 
-  // Get unique universities from the list of enrollable programs
-  const uniqueUniversities = Array.from(
-    new Map(
-      programs
-        .filter((p): p is Program & { university: { id: string; name: string; code: string } } => !!p.university)
-        .map(p => [p.university.id, p.university])
-    ).values()
-  );
-
-  const filteredPrograms = programs.filter(
-    p => p.university?.id === selectedUniversityId
-  );
-  
   const [centerConfig, setCenterConfig] = useState<any>(null);
   
   const [activeStep, setActiveStep] = useState(1);
@@ -152,12 +138,12 @@ export function EnrollStudentPanel() {
   };
 
   useEffect(() => {
-    if (selectedUniversityId) {
-      fetchSessions(selectedUniversityId);
+    if (selectedProgram?.university?.id) {
+      fetchSessions(selectedProgram.university.id);
     } else {
       setSessions([]);
     }
-  }, [selectedUniversityId]);
+  }, [selectedProgram?.university?.id]);
 
   useEffect(() => {
     setSelectedSessionId('');
@@ -184,9 +170,12 @@ export function EnrollStudentPanel() {
     setCheckingEmail(false);
   };
 
-  const availableSessions = sessions.filter(
-    s => !selectedProgram || s.programId === null || s.programId === selectedProgram.id
-  );
+  const allocatedUniversityNames = Array.isArray(centerConfig?.universities)
+    ? centerConfig.universities
+        .map((university: { name?: string }) => university.name)
+        .filter(Boolean)
+        .join(', ')
+    : '';
 
   const getTotalFee = (p: Program, pm?: string) => {
     if (!p.programFeeStructure || p.programFeeStructure.length === 0) return 0;
@@ -511,7 +500,6 @@ export function EnrollStudentPanel() {
       setEducationList([]);
       setDocumentList([]);
       setSelectedProgram(null);
-      setSelectedUniversityId('');
       fetchData();
     } catch (e: any) {
       toast.error(e.response?.data?.message || 'Enrollment failed');
@@ -522,12 +510,12 @@ export function EnrollStudentPanel() {
 
   const validateStep = (stepNum: number) => {
     if (stepNum === 1) {
-      if (!selectedUniversityId) {
-        toast.error('Please select a University');
-        return false;
-      }
       if (!selectedProgram) {
         toast.error('Please select a Program');
+        return false;
+      }
+      if (!selectedProgram.university) {
+        toast.error('The selected program has no parent university');
         return false;
       }
       if (!selectedSessionId) {
@@ -708,43 +696,43 @@ export function EnrollStudentPanel() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <Label>University <span className="text-destructive">*</span></Label>
+                  <Input
+                    value={selectedProgram?.university
+                      ? selectedProgram.university.name
+                      : allocatedUniversityNames}
+                    placeholder="No university allocated to this study center"
+                    readOnly
+                    disabled
+                    required
+                    className="bg-muted/40"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label>Program <span className="text-destructive">*</span></Label>
                   <select
-                    value={selectedUniversityId}
+                    value={selectedProgram?.id || ''}
                     onChange={e => {
-                      setSelectedUniversityId(e.target.value);
-                      setSelectedProgram(null);
+                      const p = programs.find(x => x.id === e.target.value);
+                      setSelectedProgram(p || null);
                     }}
                     className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                   >
-                    <option value="">-- Select University --</option>
-                    {uniqueUniversities.map(u => (
-                      <option key={u.id} value={u.id}>
-                        {u.name} ({u.code})
+                    <option value="">
+                      {programs.length > 0 ? '-- Select Program --' : 'No allocated programs available'}
+                    </option>
+                    {programs.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.code}) - {p.university?.name || 'University'}
                       </option>
                     ))}
                   </select>
+                  {programs.length === 0 && (
+                    <p className="text-xs text-destructive">
+                      No active programs are allocated to this study center. Please contact Operations.
+                    </p>
+                  )}
                 </div>
-
-                {selectedUniversityId && (
-                  <div className="space-y-1.5">
-                    <Label>Program <span className="text-destructive">*</span></Label>
-                    <select
-                      value={selectedProgram?.id || ''}
-                      onChange={e => {
-                        const p = programs.find(x => x.id === e.target.value);
-                        setSelectedProgram(p || null);
-                      }}
-                      className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                    >
-                      <option value="">-- Select Program --</option>
-                      {filteredPrograms.map(p => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} ({p.code})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
 
                 {selectedProgram && (
                   <div className="space-y-1.5">
@@ -755,7 +743,7 @@ export function EnrollStudentPanel() {
                       className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                     >
                       <option value="">-- Select Intake Session --</option>
-                      {availableSessions.map(s => (
+                      {sessions.map(s => (
                         <option key={s.id} value={s.id}>
                           {s.name}
                         </option>
