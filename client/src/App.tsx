@@ -304,9 +304,10 @@ function App() {
             { id: 'academic-examination-create', label: 'Create Examination' },
             { id: 'academic-examination-scheduled', label: 'Scheduled Exam' },
             { id: 'academic-examination-manage', label: 'Manage Examination' },
-            { id: 'academic-examination-registered', label: 'Registered Students' },
           ],
         },
+        { id: 'academic-examination-registered', label: 'Registered Students' },
+        { id: 'academic-examination-portal', label: 'Examination Portal' },
       ];
     }
 

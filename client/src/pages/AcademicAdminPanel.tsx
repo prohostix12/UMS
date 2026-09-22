@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 interface AcademicAdminPanelProps { initialTab?: string; }
 
 export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
+  const examPortalStorageKey = 'academic-created-exam-portals';
   const [sessions, setSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -59,6 +60,15 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
   const [registeredStudents, setRegisteredStudents] = useState<any[]>([]);
   const [registeredStudentsLoading, setRegisteredStudentsLoading] = useState(false);
   const [removingRegistrationId, setRemovingRegistrationId] = useState<string | null>(null);
+  const [examPortalForm, setExamPortalForm] = useState({ examId: '', academicSessionId: '', programId: '', examDate: '', examSession: '', examTime: '', examHall: '' });
+  const [examPortalCodes, setExamPortalCodes] = useState<Record<string, string>>({});
+  const [createdExamPortals, setCreatedExamPortals] = useState<Record<string, any>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(examPortalStorageKey) || '{}');
+    } catch {
+      return {};
+    }
+  });
 
   const fetchSessions = async () => {
     try {
@@ -75,6 +85,10 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
   };
 
   useEffect(() => { fetchSessions(); }, []);
+
+  useEffect(() => {
+    localStorage.setItem(examPortalStorageKey, JSON.stringify(createdExamPortals));
+  }, [createdExamPortals]);
 
   useEffect(() => {
     const scroller = sessionScrollerRef.current;
@@ -121,7 +135,7 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
   };
 
   useEffect(() => {
-    if (['academic-examination', 'academic-examination-create', 'academic-examination-scheduled', 'academic-examination-manage', 'academic-examination-registered'].includes(initialTab || '')) {
+    if (['academic-examination', 'academic-examination-create', 'academic-examination-scheduled', 'academic-examination-manage', 'academic-examination-registered', 'academic-examination-portal'].includes(initialTab || '')) {
       fetchExaminations();
     }
   }, [initialTab]);
@@ -129,6 +143,9 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
   const examinationPrograms = examinationForm.academicSessionId === '' ? programs : programs.filter(program => program.academicSessionId === examinationForm.academicSessionId);
   const examinationSemesters = semesters.filter(semester => (!examinationForm.programId || semester.programId === examinationForm.programId) && (!examinationForm.academicSessionId || semester.academicSessionId === examinationForm.academicSessionId));
   const filteredExaminations = examinations.filter(examination => (examinationFilters.sessionId === 'all' || examination.academicSessionId === examinationFilters.sessionId) && (examinationFilters.programId === 'all' || examination.programId === examinationFilters.programId) && (examinationFilters.semesterId === 'all' || examination.semesterId === examinationFilters.semesterId) && (examinationFilters.status === 'all' || examination.status === examinationFilters.status));
+  const portalExaminations = examPortalForm.academicSessionId
+    ? examinations.filter(examination => examination.academicSessionId === examPortalForm.academicSessionId)
+    : [];
   const examinationView = initialTab === 'academic-examination-scheduled' ? 'scheduled' : initialTab === 'academic-examination-manage' ? 'manage' : 'create';
 
   const fetchRegisteredStudents = async (examinationId: string) => {
@@ -227,9 +244,59 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
   };
 
   const generateExamLink = (examination: any) => {
-    const link = `${window.location.origin}/student/examinations/${examination.id}`;
+    if (!examination) return;
+    const programName = programs.find(program => program.id === examination.programId)?.name || 'PROGRAM';
+    const clean = (value: string) => value.toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 8) || 'EXAM';
+    const date = examPortalForm.examDate.replace(/-/g, '');
+    const time = examPortalForm.examTime.replace(':', '') || '0000';
+    const code = examPortalCodes[examination.id] || `${clean(programName)}-${clean(examination.examinationName)}-${date}-${clean(examPortalForm.examSession)}-${time}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+    setExamPortalCodes(current => ({ ...current, [examination.id]: code }));
+    const params = new URLSearchParams({
+      code,
+      date: examPortalForm.examDate,
+      session: examPortalForm.examSession,
+      time: examPortalForm.examTime,
+      hall: examPortalForm.examHall,
+    });
+    const link = `${window.location.origin}/student/examinations/${examination.id}?${params.toString()}`;
+    const createdPortal = {
+      examinationId: examination.id,
+      examinationName: examination.examinationName,
+      examinationType: examination.examinationType,
+      academicSessionId: examPortalForm.academicSessionId,
+      programName,
+      examDate: examPortalForm.examDate,
+      examSession: examPortalForm.examSession,
+      examTime: examPortalForm.examTime,
+      examHall: examPortalForm.examHall,
+      code,
+      link,
+    };
+    setCreatedExamPortals(current => ({ ...current, [examination.id]: createdPortal }));
+    try {
+      const storedPortals = JSON.parse(localStorage.getItem(examPortalStorageKey) || '{}');
+      localStorage.setItem(examPortalStorageKey, JSON.stringify({ ...storedPortals, [examination.id]: createdPortal }));
+    } catch {
+      toast.error('Exam portal could not be saved in this browser');
+    }
+    window.open(link, '_blank', 'noopener,noreferrer');
     navigator.clipboard?.writeText(link);
-    toast.success('Exam link generated and copied');
+    toast.success(`Exam portal opened. Code: ${code}`);
+  };
+
+  const selectExamForPortal = (examId: string) => {
+    const examination = examinations.find(item => item.id === examId);
+    setExamPortalForm(current => ({
+      ...current,
+      examId,
+      academicSessionId: examination?.academicSessionId || current.academicSessionId,
+      programId: examination?.programId || current.programId,
+      examDate: examination?.startDate ? new Date(examination.startDate).toISOString().slice(0, 10) : current.examDate,
+    }));
+  };
+
+  const selectSessionForPortal = (academicSessionId: string) => {
+    setExamPortalForm({ academicSessionId, examId: '', programId: '', examDate: '', examSession: '', examTime: '', examHall: '' });
   };
 
   const buildScheduleRow = (moduleId = '', date = '', overrides: Partial<Record<string, string>> = {}) => ({
@@ -553,8 +620,8 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">{initialTab === 'academic-session' ? 'Academic Session' : initialTab === 'academic-semesters' ? 'Semester' : initialTab === 'academic-modules' ? 'Modules' : 'Programs'}</h2>
-        <p className="text-muted-foreground text-sm mt-1">{initialTab === 'academic-session' ? 'Manage academic sessions' : 'Manage programs by academic session'}</p>
+        <h2 className="text-2xl font-bold tracking-tight">{initialTab === 'academic-session' ? 'Academic Session' : initialTab === 'academic-semesters' ? 'Semester' : initialTab === 'academic-modules' ? 'Modules' : initialTab === 'academic-examination-manage' ? 'Create Exam Portal' : 'Programs'}</h2>
+        <p className="text-muted-foreground text-sm mt-1">{initialTab === 'academic-session' ? 'Manage academic sessions' : initialTab === 'academic-examination-manage' ? 'Configure the exam details before opening the student portal' : 'Manage programs by academic session'}</p>
       </div>
 
       {initialTab === 'academic-calendar' ? <Card><CardContent className="py-16 text-center text-muted-foreground">Academic Calendar will be available here.</CardContent></Card> : null}
@@ -570,7 +637,30 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
         </CardContent>
       </Card>}
 
-      {['academic-examination', 'academic-examination-create', 'academic-examination-scheduled', 'academic-examination-manage'].includes(initialTab || '') && <Card>
+      {initialTab === 'academic-examination-portal' && <Card>
+        <CardHeader><CardTitle>Examination Portal</CardTitle><p className="text-sm text-muted-foreground">Examinations available for portal access.</p></CardHeader>
+        <CardContent className="space-y-3">
+          {Object.keys(createdExamPortals).length === 0 ? <p className="py-8 text-center text-muted-foreground">No exam portals created yet. Create one from Create Exam Portal.</p> : Object.values(createdExamPortals).map((portal: any) => { const session = sessions.find(item => item.id === portal.academicSessionId); return <div key={portal.examinationId} className="rounded-lg border p-4 space-y-3"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold">{portal.examinationName}</p><p className="text-sm text-muted-foreground">{portal.examinationType} · {portal.programName}</p></div><Button variant="outline" onClick={() => toast.info('Exam portal opening is not active yet.')}>Open Portal</Button></div><div className="grid grid-cols-1 gap-2 text-sm md:grid-cols-3"><span><strong>Academic Session:</strong> {session?.name || (session ? `${new Date(session.startDate).getFullYear()} - ${new Date(session.endDate).getFullYear()}` : 'N/A')}</span><span><strong>Examination Date:</strong> {portal.examDate}</span><span><strong>Exam Session:</strong> {portal.examSession}</span><span><strong>Exam Time:</strong> {portal.examTime}</span><span><strong>Exam Hall:</strong> {portal.examHall}</span><span className="font-mono"><strong>Exam Code:</strong> {portal.code}</span></div></div>; })}
+        </CardContent>
+      </Card>}
+
+      {initialTab === 'academic-examination-manage' && <Card>
+        <CardHeader><CardTitle>Create Exam Portal</CardTitle><p className="text-sm text-muted-foreground">Select the examination details before opening the student exam portal.</p></CardHeader>
+        <CardContent className="space-y-5">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="space-y-2"><Label>Academic Session</Label><Select value={examPortalForm.academicSessionId} onValueChange={selectSessionForPortal}><SelectTrigger><SelectValue placeholder="Select academic session first" /></SelectTrigger><SelectContent>{sessions.map(session => <SelectItem key={session.id} value={session.id}>{session.name || `${new Date(session.startDate).getFullYear()} - ${new Date(session.endDate).getFullYear()}`}</SelectItem>)}</SelectContent></Select></div>
+            <div className="space-y-2"><Label>Examination</Label><Select value={examPortalForm.examId} onValueChange={selectExamForPortal} disabled={!examPortalForm.academicSessionId}><SelectTrigger><SelectValue placeholder={examPortalForm.academicSessionId ? 'Select examination' : 'Select session first'} /></SelectTrigger><SelectContent>{portalExaminations.map(examination => <SelectItem key={examination.id} value={examination.id}>{examination.examinationName} - {examination.examinationType}</SelectItem>)}</SelectContent></Select></div>
+            <div className="space-y-2"><Label>Department / Program</Label><Select value={examPortalForm.programId} disabled><SelectTrigger><SelectValue placeholder="Auto-filled from examination" /></SelectTrigger><SelectContent>{programs.map(program => <SelectItem key={program.id} value={program.id}>{program.name}</SelectItem>)}</SelectContent></Select></div>
+            <div className="space-y-2"><Label>Exam Date</Label><Input type="date" value={examPortalForm.examDate} disabled /></div>
+            <div className="space-y-2"><Label>Exam Session</Label><Select value={examPortalForm.examSession} onValueChange={examSession => setExamPortalForm(current => ({ ...current, examSession }))}><SelectTrigger><SelectValue placeholder="Select exam session" /></SelectTrigger><SelectContent><SelectItem value="Morning">Morning</SelectItem><SelectItem value="Afternoon">Afternoon</SelectItem><SelectItem value="Evening">Evening</SelectItem></SelectContent></Select></div>
+            <div className="space-y-2"><Label>Exam Time</Label><Input type="time" value={examPortalForm.examTime} onChange={event => setExamPortalForm(current => ({ ...current, examTime: event.target.value }))} /></div>
+            <div className="space-y-2"><Label>Exam Hall</Label><Input placeholder="e.g. Main Hall - 101" value={examPortalForm.examHall} onChange={event => setExamPortalForm(current => ({ ...current, examHall: event.target.value }))} /></div>
+          </div>
+          <div className="flex justify-end border-t pt-4"><Button disabled={!examPortalForm.examId || !examPortalForm.academicSessionId || !examPortalForm.programId || !examPortalForm.examDate || !examPortalForm.examSession || !examPortalForm.examTime || !examPortalForm.examHall} onClick={() => generateExamLink(examinations.find(examination => examination.id === examPortalForm.examId))}>Open Exam Portal</Button></div>
+        </CardContent>
+      </Card>}
+
+      {['academic-examination', 'academic-examination-create', 'academic-examination-scheduled'].includes(initialTab || '') && <Card>
         <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"><div><CardTitle>{examinationView === 'scheduled' ? 'Scheduled Exams' : examinationView === 'manage' ? 'Manage Examination' : 'Create Examination'}</CardTitle><p className="text-sm text-muted-foreground">{examinationView === 'manage' ? 'Review examinations and generate student links' : 'Create and manage examinations'}</p></div>{examinationView === 'create' && <Button onClick={openExaminationDialog}><Plus className="w-4 h-4 mr-2" />Create Examination</Button>}</CardHeader>
         <CardContent className="space-y-5"><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3"><Select value={examinationFilters.sessionId} onValueChange={sessionId => setExaminationFilters({ ...examinationFilters, sessionId })}><SelectTrigger><SelectValue placeholder="All Sessions" /></SelectTrigger><SelectContent><SelectItem value="all">All Sessions</SelectItem>{sessions.map(session => <SelectItem key={session.id} value={session.id}>{displaySession(session.id)}</SelectItem>)}</SelectContent></Select><Select value={examinationFilters.programId} onValueChange={programId => setExaminationFilters({ ...examinationFilters, programId })}><SelectTrigger><SelectValue placeholder="All Programs" /></SelectTrigger><SelectContent><SelectItem value="all">All Programs</SelectItem>{programs.map(program => <SelectItem key={program.id} value={program.id}>{program.name}</SelectItem>)}</SelectContent></Select><Select value={examinationFilters.semesterId} onValueChange={semesterId => setExaminationFilters({ ...examinationFilters, semesterId })}><SelectTrigger><SelectValue placeholder="All Semesters" /></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(semester => <SelectItem key={semester.id} value={semester.id}>{semester.semesterName}</SelectItem>)}</SelectContent></Select><Select value={examinationFilters.status} onValueChange={status => setExaminationFilters({ ...examinationFilters, status })}><SelectTrigger><SelectValue placeholder="All Statuses" /></SelectTrigger><SelectContent><SelectItem value="all">All Statuses</SelectItem><SelectItem value="draft">Draft</SelectItem><SelectItem value="published">Published</SelectItem><SelectItem value="completed">Completed</SelectItem></SelectContent></Select></div>
           {examinationLoading ? <p className="py-8 text-center text-muted-foreground">Loading examinations...</p> : filteredExaminations.length === 0 ? <p className="py-8 text-center text-muted-foreground">No examinations created.</p> : <div className="space-y-3">{filteredExaminations.map(examination => <div key={examination.id} className="rounded-lg border p-4 space-y-3"><div><p className="font-semibold">{examination.examinationName}</p><p className="text-sm text-muted-foreground">Examination: {examination.examinationType}</p></div><div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm"><span>Program: {examination.program?.name || 'Program not found'}</span><span>Semester: {examination.semester?.semesterName}</span></div><div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm"><span>Modules: {Array.isArray(examination.moduleIds) ? examination.moduleIds.length : 0}</span><span>Examination Date: {new Date(examination.startDate).toLocaleDateString()} - {new Date(examination.endDate).toLocaleDateString()}</span><span>Status: <Badge variant="outline">{examination.status}</Badge></span></div><div className="flex justify-end gap-2"><Button size="sm" variant="outline" onClick={() => openExaminationDetails(examination)}>View</Button>{examinationView === 'scheduled' ? <><Button size="sm" variant="outline" onClick={() => handleEditExamination(examination)}>Edit</Button><Button size="sm" variant="outline" className="text-destructive" onClick={() => handleDeleteExamination(examination)}>Delete</Button></> : examinationView === 'manage' ? <Button size="sm" onClick={() => generateExamLink(examination)}>Generate Exam Link</Button> : null}</div></div>)}</div>}
