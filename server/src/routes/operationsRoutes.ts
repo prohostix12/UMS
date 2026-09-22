@@ -23,6 +23,8 @@ import {
   deleteProgramModule,
   getExaminations,
   getExaminationRegistrations,
+  getAllExaminationRegistrations,
+  removeExaminationRegistration,
   createExamination,
   updateExamination,
   deleteExamination,
@@ -106,6 +108,8 @@ router.route('/programs/:programId/modules/:moduleId')
 router.route('/examinations')
   .get(getExaminations)
   .post(authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin', 'academic_admin'), createExamination);
+router.get('/examinations/registrations', authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin', 'academic_admin'), getAllExaminationRegistrations);
+router.delete('/examinations/registrations/:registrationId', authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin', 'academic_admin'), removeExaminationRegistration);
 router.route('/examinations/:id')
   .put(authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin', 'academic_admin'), updateExamination)
   .delete(authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin', 'academic_admin'), deleteExamination);

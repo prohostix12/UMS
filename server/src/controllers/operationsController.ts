@@ -393,6 +393,28 @@ export const getExaminationRegistrations = asyncHandler(async (req: AuthRequest,
   res.json({ success: true, data: registrations });
 });
 
+export const getAllExaminationRegistrations = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const registrations = await prisma.examinationRegistration.findMany({
+    where: { organizationId: req.user.organizationId },
+    include: { examination: { select: { examinationName: true, examinationType: true } } },
+    orderBy: { createdAt: 'desc' },
+  });
+  res.json({ success: true, count: registrations.length, data: registrations });
+});
+
+export const removeExaminationRegistration = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const registration = await prisma.examinationRegistration.findFirst({
+    where: { id: req.params.registrationId, organizationId: req.user.organizationId },
+    select: { id: true },
+  });
+  if (!registration) {
+    res.status(404).json({ success: false, message: 'Registration not found' });
+    return;
+  }
+  await prisma.examinationRegistration.delete({ where: { id: registration.id } });
+  res.json({ success: true, data: {} });
+});
+
 export const createExamination = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { examinationName, examinationType, academicSessionId, programId, semesterId, startDate, endDate, description, moduleIds, schedule } = req.body;
   if (!examinationName?.trim() || !examinationType || !academicSessionId || !programId || !semesterId || !startDate || !endDate) {

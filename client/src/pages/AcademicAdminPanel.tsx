@@ -55,9 +55,10 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
   const [selectedExamination, setSelectedExamination] = useState<any | null>(null);
   const [viewExaminationDialogOpen, setViewExaminationDialogOpen] = useState(false);
   const [editingExaminationId, setEditingExaminationId] = useState<string | null>(null);
-  const [registeredExaminationId, setRegisteredExaminationId] = useState('');
+  const [registeredExaminationId, setRegisteredExaminationId] = useState('all');
   const [registeredStudents, setRegisteredStudents] = useState<any[]>([]);
   const [registeredStudentsLoading, setRegisteredStudentsLoading] = useState(false);
+  const [removingRegistrationId, setRemovingRegistrationId] = useState<string | null>(null);
 
   const fetchSessions = async () => {
     try {
@@ -134,7 +135,7 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
     setRegisteredExaminationId(examinationId);
     setRegisteredStudentsLoading(true);
     try {
-      const response = await api.get(`/operations/examinations/${examinationId}/registrations`);
+      const response = await api.get(examinationId === 'all' ? '/operations/examinations/registrations' : `/operations/examinations/${examinationId}/registrations`);
       setRegisteredStudents(response.data.data || []);
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Failed to load registered students');
@@ -143,6 +144,24 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
       setRegisteredStudentsLoading(false);
     }
   };
+
+  const removeRegisteredStudent = async (registration: any) => {
+    if (!window.confirm(`Remove ${registration.fullName} from this examination?`)) return;
+    setRemovingRegistrationId(registration.id);
+    try {
+      await api.delete(`/operations/examinations/registrations/${registration.id}`);
+      toast.success('Student removed from the examination');
+      await fetchRegisteredStudents(registeredExaminationId);
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to remove student');
+    } finally {
+      setRemovingRegistrationId(null);
+    }
+  };
+
+  useEffect(() => {
+    if (initialTab === 'academic-examination-registered') fetchRegisteredStudents('all');
+  }, [initialTab]);
 
   const openExaminationDialog = () => {
     setEditingExaminationId(null);
@@ -541,13 +560,13 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
       {initialTab === 'academic-calendar' ? <Card><CardContent className="py-16 text-center text-muted-foreground">Academic Calendar will be available here.</CardContent></Card> : null}
 
       {initialTab === 'academic-examination-registered' && <Card>
-        <CardHeader><CardTitle>Registered Students</CardTitle><p className="text-sm text-muted-foreground">Students who registered for the selected examination</p></CardHeader>
+        <CardHeader><CardTitle>Registered Students ({registeredStudents.length})</CardTitle><p className="text-sm text-muted-foreground">Total students registered for examinations</p></CardHeader>
         <CardContent className="space-y-4">
           <Select value={registeredExaminationId} onValueChange={fetchRegisteredStudents}>
-            <SelectTrigger><SelectValue placeholder="Select examination" /></SelectTrigger>
-            <SelectContent>{examinations.map(examination => <SelectItem key={examination.id} value={examination.id}>{examination.examinationName} - {examination.examinationType}</SelectItem>)}</SelectContent>
+            <SelectTrigger><SelectValue placeholder="Filter students" /></SelectTrigger>
+            <SelectContent><SelectItem value="all">All Students</SelectItem>{examinations.map(examination => <SelectItem key={examination.id} value={examination.id}>{examination.examinationName} - {examination.examinationType}</SelectItem>)}</SelectContent>
           </Select>
-          {!registeredExaminationId ? <p className="py-8 text-center text-muted-foreground">Select an examination to view registered students.</p> : registeredStudentsLoading ? <p className="py-8 text-center text-muted-foreground">Loading registered students...</p> : registeredStudents.length === 0 ? <p className="py-8 text-center text-muted-foreground">No students registered for this examination.</p> : <div className="overflow-x-auto rounded-lg border"><table className="w-full text-sm"><thead className="bg-muted/40"><tr><th className="p-3 text-left">Name</th><th className="p-3 text-left">Enrollment No</th><th className="p-3 text-left">Email</th><th className="p-3 text-left">Phone</th><th className="p-3 text-left">Registered At</th></tr></thead><tbody>{registeredStudents.map(registration => <tr key={registration.id} className="border-t"><td className="p-3">{registration.fullName}</td><td className="p-3">{registration.enrollmentNo}</td><td className="p-3">{registration.email}</td><td className="p-3">{registration.phone}</td><td className="p-3">{new Date(registration.createdAt).toLocaleString()}</td></tr>)}</tbody></table></div>}
+          {registeredStudentsLoading ? <p className="py-8 text-center text-muted-foreground">Loading registered students...</p> : registeredStudents.length === 0 ? <p className="py-8 text-center text-muted-foreground">No students registered for this examination.</p> : <div className="overflow-x-auto rounded-lg border"><table className="w-full text-sm"><thead className="bg-muted/40"><tr><th className="p-3 text-left">Name</th><th className="p-3 text-left">Enrollment No</th><th className="p-3 text-left">Email</th><th className="p-3 text-left">Phone</th><th className="p-3 text-left">Examination</th><th className="p-3 text-left">Registered At</th><th className="p-3 text-left">Action</th></tr></thead><tbody>{registeredStudents.map(registration => <tr key={registration.id} className="border-t"><td className="p-3">{registration.fullName}</td><td className="p-3">{registration.enrollmentNo}</td><td className="p-3">{registration.email}</td><td className="p-3">{registration.phone}</td><td className="p-3">{registration.examination?.examinationName || 'Selected examination'}</td><td className="p-3">{new Date(registration.createdAt).toLocaleString()}</td><td className="p-3"><Button size="sm" variant="outline" className="text-destructive hover:text-destructive" disabled={removingRegistrationId === registration.id} onClick={() => removeRegisteredStudent(registration)}><Trash2 className="mr-1 h-4 w-4" />{removingRegistrationId === registration.id ? 'Removing...' : 'Remove'}</Button></td></tr>)}</tbody></table></div>}
         </CardContent>
       </Card>}
 
