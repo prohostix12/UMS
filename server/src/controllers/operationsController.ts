@@ -385,6 +385,14 @@ export const getExaminations = asyncHandler(async (req: AuthRequest, res: Respon
   res.json({ success: true, count: examinations.length, data: examinations });
 });
 
+export const getExaminationRegistrations = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const registrations = await prisma.examinationRegistration.findMany({
+    where: { organizationId: req.user.organizationId, examinationId: req.params.id },
+    orderBy: { createdAt: 'desc' },
+  });
+  res.json({ success: true, data: registrations });
+});
+
 export const createExamination = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { examinationName, examinationType, academicSessionId, programId, semesterId, startDate, endDate, description, moduleIds, schedule } = req.body;
   if (!examinationName?.trim() || !examinationType || !academicSessionId || !programId || !semesterId || !startDate || !endDate) {

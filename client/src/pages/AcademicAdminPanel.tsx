@@ -55,6 +55,9 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
   const [selectedExamination, setSelectedExamination] = useState<any | null>(null);
   const [viewExaminationDialogOpen, setViewExaminationDialogOpen] = useState(false);
   const [editingExaminationId, setEditingExaminationId] = useState<string | null>(null);
+  const [registeredExaminationId, setRegisteredExaminationId] = useState('');
+  const [registeredStudents, setRegisteredStudents] = useState<any[]>([]);
+  const [registeredStudentsLoading, setRegisteredStudentsLoading] = useState(false);
 
   const fetchSessions = async () => {
     try {
@@ -116,11 +119,30 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
     finally { setExaminationLoading(false); }
   };
 
-  useEffect(() => { if (initialTab === 'academic-examination') fetchExaminations(); }, [initialTab]);
+  useEffect(() => {
+    if (['academic-examination', 'academic-examination-create', 'academic-examination-scheduled', 'academic-examination-manage', 'academic-examination-registered'].includes(initialTab || '')) {
+      fetchExaminations();
+    }
+  }, [initialTab]);
 
   const examinationPrograms = examinationForm.academicSessionId === '' ? programs : programs.filter(program => program.academicSessionId === examinationForm.academicSessionId);
   const examinationSemesters = semesters.filter(semester => (!examinationForm.programId || semester.programId === examinationForm.programId) && (!examinationForm.academicSessionId || semester.academicSessionId === examinationForm.academicSessionId));
   const filteredExaminations = examinations.filter(examination => (examinationFilters.sessionId === 'all' || examination.academicSessionId === examinationFilters.sessionId) && (examinationFilters.programId === 'all' || examination.programId === examinationFilters.programId) && (examinationFilters.semesterId === 'all' || examination.semesterId === examinationFilters.semesterId) && (examinationFilters.status === 'all' || examination.status === examinationFilters.status));
+  const examinationView = initialTab === 'academic-examination-scheduled' ? 'scheduled' : initialTab === 'academic-examination-manage' ? 'manage' : 'create';
+
+  const fetchRegisteredStudents = async (examinationId: string) => {
+    setRegisteredExaminationId(examinationId);
+    setRegisteredStudentsLoading(true);
+    try {
+      const response = await api.get(`/operations/examinations/${examinationId}/registrations`);
+      setRegisteredStudents(response.data.data || []);
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to load registered students');
+      setRegisteredStudents([]);
+    } finally {
+      setRegisteredStudentsLoading(false);
+    }
+  };
 
   const openExaminationDialog = () => {
     setEditingExaminationId(null);
@@ -172,6 +194,23 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
       setEditingExaminationId(null);
       fetchExaminations();
     } catch (error: any) { toast.error(error.response?.data?.message || 'Failed to save examination'); }
+  };
+
+  const handleDeleteExamination = async (examination: any) => {
+    if (!window.confirm(`Delete ${examination.examinationName}?`)) return;
+    try {
+      await api.delete(`/operations/examinations/${examination.id}`);
+      toast.success('Examination deleted');
+      fetchExaminations();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to delete examination');
+    }
+  };
+
+  const generateExamLink = (examination: any) => {
+    const link = `${window.location.origin}/student/examinations/${examination.id}`;
+    navigator.clipboard?.writeText(link);
+    toast.success('Exam link generated and copied');
   };
 
   const buildScheduleRow = (moduleId = '', date = '', overrides: Partial<Record<string, string>> = {}) => ({
@@ -501,10 +540,21 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
 
       {initialTab === 'academic-calendar' ? <Card><CardContent className="py-16 text-center text-muted-foreground">Academic Calendar will be available here.</CardContent></Card> : null}
 
-      {initialTab === 'academic-examination' && <Card>
-        <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"><div><CardTitle>Examinations</CardTitle><p className="text-sm text-muted-foreground">Create and manage examinations</p></div><div className="flex flex-wrap gap-2"><Button onClick={openExaminationDialog}><Plus className="w-4 h-4 mr-2" />Create Examination</Button><Button variant="outline" onClick={() => toast.info('Manage Examination is coming soon')}>Manage Examination</Button><Button variant="outline" onClick={() => toast.info('Examination Schedule is coming soon')}>Examination Schedule</Button></div></CardHeader>
+      {initialTab === 'academic-examination-registered' && <Card>
+        <CardHeader><CardTitle>Registered Students</CardTitle><p className="text-sm text-muted-foreground">Students who registered for the selected examination</p></CardHeader>
+        <CardContent className="space-y-4">
+          <Select value={registeredExaminationId} onValueChange={fetchRegisteredStudents}>
+            <SelectTrigger><SelectValue placeholder="Select examination" /></SelectTrigger>
+            <SelectContent>{examinations.map(examination => <SelectItem key={examination.id} value={examination.id}>{examination.examinationName} - {examination.examinationType}</SelectItem>)}</SelectContent>
+          </Select>
+          {!registeredExaminationId ? <p className="py-8 text-center text-muted-foreground">Select an examination to view registered students.</p> : registeredStudentsLoading ? <p className="py-8 text-center text-muted-foreground">Loading registered students...</p> : registeredStudents.length === 0 ? <p className="py-8 text-center text-muted-foreground">No students registered for this examination.</p> : <div className="overflow-x-auto rounded-lg border"><table className="w-full text-sm"><thead className="bg-muted/40"><tr><th className="p-3 text-left">Name</th><th className="p-3 text-left">Enrollment No</th><th className="p-3 text-left">Email</th><th className="p-3 text-left">Phone</th><th className="p-3 text-left">Registered At</th></tr></thead><tbody>{registeredStudents.map(registration => <tr key={registration.id} className="border-t"><td className="p-3">{registration.fullName}</td><td className="p-3">{registration.enrollmentNo}</td><td className="p-3">{registration.email}</td><td className="p-3">{registration.phone}</td><td className="p-3">{new Date(registration.createdAt).toLocaleString()}</td></tr>)}</tbody></table></div>}
+        </CardContent>
+      </Card>}
+
+      {['academic-examination', 'academic-examination-create', 'academic-examination-scheduled', 'academic-examination-manage'].includes(initialTab || '') && <Card>
+        <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"><div><CardTitle>{examinationView === 'scheduled' ? 'Scheduled Exams' : examinationView === 'manage' ? 'Manage Examination' : 'Create Examination'}</CardTitle><p className="text-sm text-muted-foreground">{examinationView === 'manage' ? 'Review examinations and generate student links' : 'Create and manage examinations'}</p></div>{examinationView === 'create' && <Button onClick={openExaminationDialog}><Plus className="w-4 h-4 mr-2" />Create Examination</Button>}</CardHeader>
         <CardContent className="space-y-5"><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3"><Select value={examinationFilters.sessionId} onValueChange={sessionId => setExaminationFilters({ ...examinationFilters, sessionId })}><SelectTrigger><SelectValue placeholder="All Sessions" /></SelectTrigger><SelectContent><SelectItem value="all">All Sessions</SelectItem>{sessions.map(session => <SelectItem key={session.id} value={session.id}>{displaySession(session.id)}</SelectItem>)}</SelectContent></Select><Select value={examinationFilters.programId} onValueChange={programId => setExaminationFilters({ ...examinationFilters, programId })}><SelectTrigger><SelectValue placeholder="All Programs" /></SelectTrigger><SelectContent><SelectItem value="all">All Programs</SelectItem>{programs.map(program => <SelectItem key={program.id} value={program.id}>{program.name}</SelectItem>)}</SelectContent></Select><Select value={examinationFilters.semesterId} onValueChange={semesterId => setExaminationFilters({ ...examinationFilters, semesterId })}><SelectTrigger><SelectValue placeholder="All Semesters" /></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(semester => <SelectItem key={semester.id} value={semester.id}>{semester.semesterName}</SelectItem>)}</SelectContent></Select><Select value={examinationFilters.status} onValueChange={status => setExaminationFilters({ ...examinationFilters, status })}><SelectTrigger><SelectValue placeholder="All Statuses" /></SelectTrigger><SelectContent><SelectItem value="all">All Statuses</SelectItem><SelectItem value="draft">Draft</SelectItem><SelectItem value="published">Published</SelectItem><SelectItem value="completed">Completed</SelectItem></SelectContent></Select></div>
-          {examinationLoading ? <p className="py-8 text-center text-muted-foreground">Loading examinations...</p> : filteredExaminations.length === 0 ? <p className="py-8 text-center text-muted-foreground">No examinations created.</p> : <div className="space-y-3">{filteredExaminations.map(examination => <div key={examination.id} className="rounded-lg border p-4 space-y-3"><div><p className="font-semibold">{examination.examinationName}</p><p className="text-sm text-muted-foreground">Examination: {examination.examinationType}</p></div><div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm"><span>Program: {examination.program?.name || 'Program not found'}</span><span>Semester: {examination.semester?.semesterName}</span></div><div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm"><span>Modules: {Array.isArray(examination.moduleIds) ? examination.moduleIds.length : 0}</span><span>Examination Date: {new Date(examination.startDate).toLocaleDateString()} - {new Date(examination.endDate).toLocaleDateString()}</span><span>Status: <Badge variant="outline">{examination.status}</Badge></span></div><div className="flex justify-end gap-2"><Button size="sm" variant="outline" onClick={() => openExaminationDetails(examination)}>View</Button><Button size="sm" variant="outline" onClick={() => handleEditExamination(examination)}>Edit</Button></div></div>)}</div>}
+          {examinationLoading ? <p className="py-8 text-center text-muted-foreground">Loading examinations...</p> : filteredExaminations.length === 0 ? <p className="py-8 text-center text-muted-foreground">No examinations created.</p> : <div className="space-y-3">{filteredExaminations.map(examination => <div key={examination.id} className="rounded-lg border p-4 space-y-3"><div><p className="font-semibold">{examination.examinationName}</p><p className="text-sm text-muted-foreground">Examination: {examination.examinationType}</p></div><div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm"><span>Program: {examination.program?.name || 'Program not found'}</span><span>Semester: {examination.semester?.semesterName}</span></div><div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm"><span>Modules: {Array.isArray(examination.moduleIds) ? examination.moduleIds.length : 0}</span><span>Examination Date: {new Date(examination.startDate).toLocaleDateString()} - {new Date(examination.endDate).toLocaleDateString()}</span><span>Status: <Badge variant="outline">{examination.status}</Badge></span></div><div className="flex justify-end gap-2"><Button size="sm" variant="outline" onClick={() => openExaminationDetails(examination)}>View</Button>{examinationView === 'scheduled' ? <><Button size="sm" variant="outline" onClick={() => handleEditExamination(examination)}>Edit</Button><Button size="sm" variant="outline" className="text-destructive" onClick={() => handleDeleteExamination(examination)}>Delete</Button></> : examinationView === 'manage' ? <Button size="sm" onClick={() => generateExamLink(examination)}>Generate Exam Link</Button> : null}</div></div>)}</div>}
         </CardContent>
       </Card>}
 

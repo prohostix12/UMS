@@ -22,6 +22,7 @@ import {
   updateProgramModule,
   deleteProgramModule,
   getExaminations,
+  getExaminationRegistrations,
   createExamination,
   updateExamination,
   deleteExamination,
@@ -108,6 +109,7 @@ router.route('/examinations')
 router.route('/examinations/:id')
   .put(authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin', 'academic_admin'), updateExamination)
   .delete(authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin', 'academic_admin'), deleteExamination);
+router.get('/examinations/:id/registrations', authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin', 'academic_admin'), getExaminationRegistrations);
 router.put('/examinations/:id/modules', authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin', 'academic_admin'), updateExaminationModules);
 
 // Onboarding — document verification (must be before /centers/:id to avoid route conflict)

@@ -110,7 +110,7 @@ export const getStudent = asyncHandler(async (req: AuthRequest, res: Response) =
 export const getStudentExamination = asyncHandler(async (req: AuthRequest, res: Response) => {
   const student = await prisma.student.findFirst({
     where: { organizationId: req.user.organizationId, email: req.user.email, status: 'active' },
-    select: { programId: true, sessionId: true },
+    select: { id: true, programId: true, sessionId: true },
   });
   if (!student?.sessionId) {
     res.status(404).json({ success: false, message: 'Active student session not found' });
@@ -130,6 +130,10 @@ export const getStudentExamination = asyncHandler(async (req: AuthRequest, res: 
     res.status(404).json({ success: false, message: 'Examination not found for your active session' });
     return;
   }
+  const registration = await prisma.examinationRegistration.findUnique({
+    where: { examinationId_studentId: { examinationId: examination.id, studentId: student.id } },
+    select: { id: true },
+  });
   const moduleIds = Array.isArray(examination.moduleIds)
     ? examination.moduleIds.filter((moduleId): moduleId is string => typeof moduleId === 'string')
     : [];
@@ -139,7 +143,34 @@ export const getStudentExamination = asyncHandler(async (req: AuthRequest, res: 
         select: { id: true, moduleCode: true, moduleName: true, moduleType: true },
       })
     : [];
-  res.json({ success: true, data: { ...examination, modules } });
+  res.json({ success: true, data: { ...examination, modules, registered: Boolean(registration) } });
+});
+
+export const registerForExamination = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { fullName, enrollmentNo, email, phone, confirmed } = req.body;
+  if (!fullName?.trim() || !enrollmentNo?.trim() || !email?.trim() || !phone?.trim() || confirmed !== true) {
+    res.status(400).json({ success: false, message: 'All registration fields and confirmation are required' });
+    return;
+  }
+
+  const student = await prisma.student.findFirst({
+    where: { organizationId: req.user.organizationId, email: req.user.email, status: 'active' },
+    select: { id: true, programId: true, sessionId: true },
+  });
+  if (!student?.sessionId) { res.status(404).json({ success: false, message: 'Active student session not found' }); return; }
+
+  const examination = await prisma.examination.findFirst({
+    where: { id: req.params.examinationId, organizationId: req.user.organizationId, programId: student.programId, academicSessionId: student.sessionId },
+    select: { id: true },
+  });
+  if (!examination) { res.status(404).json({ success: false, message: 'Examination not found for your active session' }); return; }
+
+  const registration = await prisma.examinationRegistration.upsert({
+    where: { examinationId_studentId: { examinationId: examination.id, studentId: student.id } },
+    update: { fullName: fullName.trim(), enrollmentNo: enrollmentNo.trim(), email: email.trim(), phone: phone.trim(), confirmedAt: new Date() },
+    create: { organizationId: req.user.organizationId, examinationId: examination.id, studentId: student.id, userId: req.user.id, fullName: fullName.trim(), enrollmentNo: enrollmentNo.trim(), email: email.trim(), phone: phone.trim() },
+  });
+  res.status(201).json({ success: true, data: registration });
 });
 
 export const createStudent = asyncHandler(async (req: AuthRequest, res: Response) => {

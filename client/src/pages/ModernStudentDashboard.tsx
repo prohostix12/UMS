@@ -35,6 +35,7 @@ export function ModernStudentDashboard() {
   const [examinationLoadingId, setExaminationLoadingId] = useState<string | null>(null);
   const [registrationOpen, setRegistrationOpen] = useState(false);
   const [registrationExamination, setRegistrationExamination] = useState<any>(null);
+  const [registeredExaminationIds, setRegisteredExaminationIds] = useState<string[]>([]);
   const [registrationForm, setRegistrationForm] = useState({
     fullName: '',
     enrollmentNo: '',
@@ -110,6 +111,9 @@ export function ModernStudentDashboard() {
     try {
       const response = await api.get(`/students/examinations/${examinationId}`);
       setSelectedExamination(response.data.data);
+      if (response.data.data?.registered) {
+        setRegisteredExaminationIds(current => current.includes(examinationId) ? current : [...current, examinationId]);
+      }
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Failed to load examination details');
     } finally {
@@ -122,6 +126,10 @@ export function ModernStudentDashboard() {
       ? notification.link.replace('examinations/', '')
       : '';
     if (!examinationId) return;
+    if (registeredExaminationIds.includes(examinationId)) {
+      toast.info('You are already registered for this examination');
+      return;
+    }
 
     setRegistrationForm({
       fullName: student?.name || '',
@@ -134,11 +142,29 @@ export function ModernStudentDashboard() {
     try {
       const response = await api.get(`/students/examinations/${examinationId}`);
       setRegistrationExamination(response.data.data);
+      if (response.data.data?.registered) {
+        setRegisteredExaminationIds(current => current.includes(examinationId) ? current : [...current, examinationId]);
+        toast.info('You are already registered for this examination');
+        return;
+      }
       setRegistrationOpen(true);
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Failed to load examination details');
     } finally {
       setExaminationLoadingId(null);
+    }
+  };
+
+  const submitRegistration = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!registrationExamination) return;
+    try {
+      await api.post(`/students/examinations/${registrationExamination.id}/register`, { ...registrationForm, confirmed: registrationConfirmed });
+      toast.success('Examination registration completed');
+      setRegisteredExaminationIds(current => current.includes(registrationExamination.id) ? current : [...current, registrationExamination.id]);
+      setRegistrationOpen(false);
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to register for examination');
     }
   };
 
@@ -336,9 +362,9 @@ export function ModernStudentDashboard() {
                         <Button
                           size="sm"
                           onClick={() => openRegistrationForm(notification)}
-                          disabled={examinationLoadingId === notification.id}
+                          disabled={examinationLoadingId === notification.id || registeredExaminationIds.includes(notification.link.replace('examinations/', ''))}
                         >
-                          {examinationLoadingId === notification.id ? 'Loading...' : 'Register'}
+                          {registeredExaminationIds.includes(notification.link.replace('examinations/', '')) ? 'Registered' : examinationLoadingId === notification.id ? 'Loading...' : 'Register'}
                         </Button>
                       </div>
                     )}
@@ -605,7 +631,7 @@ export function ModernStudentDashboard() {
             <DialogTitle>Examination Registration</DialogTitle>
             <DialogDescription>Verify the examination details and complete the required student fields.</DialogDescription>
           </DialogHeader>
-          <form className="space-y-4" onSubmit={event => event.preventDefault()}>
+          <form className="space-y-4" onSubmit={submitRegistration}>
             {registrationExamination && (
               <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
                 <h3 className="font-semibold">Examination Details</h3>

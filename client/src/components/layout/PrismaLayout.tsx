@@ -34,6 +34,7 @@ interface TableItem {
   label: string;
   icon?: React.ReactNode;
   isSection?: boolean;
+  children?: TableItem[];
 }
 
 interface PrismaLayoutProps {
@@ -66,6 +67,7 @@ export function PrismaLayout({
   const [searchQuery, setSearchQuery] = useState('');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
   const [isDarkMode, setIsDarkMode] = useState(() => {
     return document.documentElement.classList.contains('dark') || 
            localStorage.getItem('theme') === 'dark';
@@ -247,30 +249,53 @@ export function PrismaLayout({
               );
             }
             const isActive = activeTable === table.id;
+            const hasChildren = Boolean(table.children?.length);
+            const isExpanded = expandedItems[table.id] ?? (hasChildren && Boolean(table.children?.some(child => child.id === activeTable)));
             return (
-              <button
-                key={table.id}
-                onClick={() => onTableChange(table.id)}
-                className={cn(
-                  'w-full px-4 py-2.5 rounded-lg text-left text-sm transition-all duration-200 flex items-center gap-3 group',
-                  isActive
-                    ? 'bg-sidebar-primary/20 text-sidebar-primary font-semibold shadow-sm'
-                    : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground'
+              <div key={table.id}>
+                <button
+                  onClick={() => hasChildren
+                    ? setExpandedItems(current => ({ ...current, [table.id]: !isExpanded }))
+                    : onTableChange(table.id)}
+                  className={cn(
+                    'w-full px-4 py-2.5 rounded-lg text-left text-sm transition-all duration-200 flex items-center gap-3 group',
+                    isActive
+                      ? 'bg-sidebar-primary/20 text-sidebar-primary font-semibold shadow-sm'
+                      : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground'
+                  )}
+                >
+                  <div className={cn(
+                    "p-1.5 rounded-md transition-colors shrink-0",
+                    isActive
+                      ? "bg-sidebar-primary text-white"
+                      : "bg-sidebar-accent text-sidebar-foreground/60 group-hover:text-sidebar-foreground"
+                  )}>
+                    {table.icon}
+                  </div>
+                  <span className="truncate">{table.label}</span>
+                  {hasChildren ? <ChevronRight className={cn('ml-auto w-4 h-4 transition-transform', isExpanded && 'rotate-90')} /> : isActive && (
+                    <div className="ml-auto w-1.5 h-1.5 rounded-full bg-sidebar-primary shrink-0" />
+                  )}
+                </button>
+                {hasChildren && isExpanded && (
+                  <div className="ml-8 mt-1 space-y-1 border-l border-sidebar-border pl-2">
+                    {table.children?.map(child => (
+                      <button
+                        key={child.id}
+                        onClick={() => onTableChange(child.id)}
+                        className={cn(
+                          'w-full px-3 py-2 rounded-lg text-left text-xs transition-colors',
+                          activeTable === child.id
+                            ? 'bg-sidebar-primary/20 text-sidebar-primary font-semibold'
+                            : 'text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground'
+                        )}
+                      >
+                        {child.label}
+                      </button>
+                    ))}
+                  </div>
                 )}
-              >
-                <div className={cn(
-                  "p-1.5 rounded-md transition-colors shrink-0",
-                  isActive
-                    ? "bg-sidebar-primary text-white"
-                    : "bg-sidebar-accent text-sidebar-foreground/60 group-hover:text-sidebar-foreground"
-                )}>
-                  {table.icon}
-                </div>
-                <span className="truncate">{table.label}</span>
-                {isActive && (
-                  <div className="ml-auto w-1.5 h-1.5 rounded-full bg-sidebar-primary shrink-0" />
-                )}
-              </button>
+              </div>
             );
           })}
         </nav>

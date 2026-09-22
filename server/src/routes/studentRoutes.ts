@@ -4,6 +4,7 @@ import {
   getStudents,
   getStudent,
   getStudentExamination,
+  registerForExamination,
   createStudent,
   updateStudent,
   approveStudent,
@@ -34,6 +35,7 @@ router.route('/marks/:id').get(getInternalMark).put(authorize('ops_admin', 'empl
 router.get('/:id/installments', getStudentInstallments);
 router.post('/:id/pay-installment', authorize('center_admin'), payStudentInstallment);
 router.get('/examinations/:examinationId', getStudentExamination);
+router.post('/examinations/:examinationId/register', registerForExamination);
 
 // Status change request routes
 router.get('/status-requests', authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin', 'finance_admin', 'center_admin', 'employee'), getStatusChangeRequests);

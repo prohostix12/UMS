@@ -297,7 +297,16 @@ function App() {
         { id: 'academic-semesters', label: 'Semester' },
         { id: 'academic-modules', label: 'Modules' },
         { id: 'academic-calendar', label: 'Academic Calendar' },
-        { id: 'academic-examination', label: 'Examination' },
+        {
+          id: 'academic-examination',
+          label: 'Examination',
+          children: [
+            { id: 'academic-examination-create', label: 'Create Examination' },
+            { id: 'academic-examination-scheduled', label: 'Scheduled Exam' },
+            { id: 'academic-examination-manage', label: 'Manage Examination' },
+            { id: 'academic-examination-registered', label: 'Registered Students' },
+          ],
+        },
       ];
     }
 
