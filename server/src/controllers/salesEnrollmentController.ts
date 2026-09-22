@@ -443,6 +443,7 @@ export const approveSalesEnrollmentFinance = asyncHandler(async (req: AuthReques
           maritalStatus: enrollment.maritalStatus,
           currentlyWorking: enrollment.currentlyWorking,
           status: 'active',
+          sessionId: enrollment.sessionId,
           enrolledAt: new Date(),
           organization: { connect: { id: req.user.organizationId } },
           center: { connect: { id: enrollment.studyCenterId } },
@@ -469,7 +470,8 @@ export const approveSalesEnrollmentFinance = asyncHandler(async (req: AuthReques
         pincode: enrollment.pincode,
         alternativePhone: enrollment.alternativePhone,
         maritalStatus: enrollment.maritalStatus,
-        currentlyWorking: enrollment.currentlyWorking
+        currentlyWorking: enrollment.currentlyWorking,
+        sessionId: enrollment.sessionId
       };
       if (!student.enrolledAt) {
         updateData.enrolledAt = new Date();

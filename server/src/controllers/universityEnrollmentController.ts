@@ -80,7 +80,7 @@ export const approveUniversityEnrollment = asyncHandler(async (req: AuthRequest,
   if (updatedEnrollment.studentId) {
     await prisma.student.update({
       where: { id: updatedEnrollment.studentId },
-      data: { enrolledAt: now, status: 'active' }
+      data: { enrolledAt: now, status: 'active', sessionId: enrollment.sessionId }
     });
   }
 

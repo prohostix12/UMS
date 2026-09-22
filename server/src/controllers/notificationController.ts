@@ -4,7 +4,61 @@ import { AuthRequest } from '../middleware/auth.js';
 import prisma from '../lib/prisma.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
+const syncStudentExaminationNotifications = async (req: AuthRequest) => {
+  if (req.user.role !== 'student') return;
+
+  const student = await prisma.student.findFirst({
+    where: {
+      organizationId: req.user.organizationId,
+      email: req.user.email,
+      status: 'active',
+    },
+    select: { id: true, programId: true, sessionId: true },
+  });
+
+  if (!student?.sessionId) return;
+
+  const examinations = await prisma.examination.findMany({
+    where: {
+      organizationId: req.user.organizationId,
+      programId: student.programId,
+      academicSessionId: student.sessionId,
+    },
+    include: { academicSession: { select: { name: true } } },
+  });
+
+  if (examinations.length === 0) return;
+
+  const links = examinations.map(examination => `examinations/${examination.id}`);
+  const existing = await prisma.notification.findMany({
+    where: { userId: req.user.id, link: { in: links } },
+    select: { link: true },
+  });
+  const existingLinks = new Set(existing.map(notification => notification.link));
+  const missing = examinations.filter(examination => !existingLinks.has(`examinations/${examination.id}`));
+
+  if (missing.length > 0) {
+    await prisma.notification.createMany({
+      data: missing.map(examination => ({
+        organizationId: req.user.organizationId,
+        userId: req.user.id,
+        title: 'New Examination Published',
+        message: `${examination.examinationType} has been created for your ${examination.academicSession.name}.`,
+        type: 'general' as any,
+        priority: 'medium' as any,
+        link: `examinations/${examination.id}`,
+      })),
+    });
+  }
+
+  await Promise.all(examinations.map(examination => prisma.notification.updateMany({
+    where: { userId: req.user.id, link: `examinations/${examination.id}` },
+    data: { message: `${examination.examinationType} has been created for your ${examination.academicSession.name}.` },
+  })));
+};
+
 export const getMyNotifications = asyncHandler(async (req: AuthRequest, res: Response) => {
+  await syncStudentExaminationNotifications(req);
   const notifications = await prisma.notification.findMany({
     where: { userId: req.user.id },
     orderBy: { createdAt: 'desc' }

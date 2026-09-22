@@ -2,8 +2,11 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import api from '@/lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   GraduationCap, 
@@ -27,7 +30,18 @@ export function ModernStudentDashboard() {
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selectedSemester, setSelectedSemester] = useState<string>('1');
-  const [activeSection, setActiveSection] = useState<'portal' | 'notifications'>('portal');
+  const [activeSection, setActiveSection] = useState<'portal' | 'notifications' | 'active-session'>('portal');
+  const [selectedExamination, setSelectedExamination] = useState<any>(null);
+  const [examinationLoadingId, setExaminationLoadingId] = useState<string | null>(null);
+  const [registrationOpen, setRegistrationOpen] = useState(false);
+  const [registrationExamination, setRegistrationExamination] = useState<any>(null);
+  const [registrationForm, setRegistrationForm] = useState({
+    fullName: '',
+    enrollmentNo: '',
+    email: '',
+    phone: '',
+  });
+  const [registrationConfirmed, setRegistrationConfirmed] = useState(false);
 
   useEffect(() => {
     fetchStudentData();
@@ -41,12 +55,19 @@ export function ModernStudentDashboard() {
       if (studentRes.data.data && studentRes.data.data.length > 0) {
         const studentInfo = studentRes.data.data[0];
         setStudent(studentInfo);
-        
-        // Fetch materials for their program
+
+        // Render the portal as soon as the profile is available. Materials are secondary.
+        setLoading(false);
+
         if (studentInfo.program?.id) {
-          const materialsRes = await api.get(`/operations/programs/${studentInfo.program.id}/materials`);
-          setMaterials(materialsRes.data.data || []);
+          try {
+            const materialsRes = await api.get(`/operations/programs/${studentInfo.program.id}/materials`);
+            setMaterials(materialsRes.data.data || []);
+          } catch {
+            setMaterials([]);
+          }
         }
+        return;
       }
     } catch (error) {
       toast.error('Failed to load dashboard data');
@@ -77,6 +98,47 @@ export function ModernStudentDashboard() {
       setUnreadNotifications(0);
     } catch (error) {
       toast.error('Failed to mark notifications as read');
+    }
+  };
+
+  const viewExaminationDetails = async (notification: any) => {
+    const examinationId = notification.link?.startsWith('examinations/')
+      ? notification.link.replace('examinations/', '')
+      : '';
+    if (!examinationId) return;
+    setExaminationLoadingId(examinationId);
+    try {
+      const response = await api.get(`/students/examinations/${examinationId}`);
+      setSelectedExamination(response.data.data);
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to load examination details');
+    } finally {
+      setExaminationLoadingId(null);
+    }
+  };
+
+  const openRegistrationForm = async (notification: any) => {
+    const examinationId = notification.link?.startsWith('examinations/')
+      ? notification.link.replace('examinations/', '')
+      : '';
+    if (!examinationId) return;
+
+    setRegistrationForm({
+      fullName: student?.name || '',
+      enrollmentNo: student?.enrollmentNo || '',
+      email: student?.email || '',
+      phone: student?.phone || '',
+    });
+    setRegistrationConfirmed(false);
+    setExaminationLoadingId(notification.id);
+    try {
+      const response = await api.get(`/students/examinations/${examinationId}`);
+      setRegistrationExamination(response.data.data);
+      setRegistrationOpen(true);
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to load examination details');
+    } finally {
+      setExaminationLoadingId(null);
     }
   };
 
@@ -182,6 +244,15 @@ export function ModernStudentDashboard() {
                 </Badge>
               )}
             </Button>
+            <Button
+              variant={activeSection === 'active-session' ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setActiveSection('active-session')}
+              className="gap-2"
+            >
+              <School className="w-4 h-4" />
+              <span className="hidden sm:inline">Active Session</span>
+            </Button>
             <div className="hidden md:block text-right">
               <p className="text-sm font-medium">{student.name}</p>
               <p className="text-xs text-muted-foreground">{student.enrollmentNo}</p>
@@ -209,6 +280,14 @@ export function ModernStudentDashboard() {
                 {unreadNotifications}
               </Badge>
             )}
+          </Button>
+          <Button
+            variant={activeSection === 'active-session' ? 'secondary' : 'ghost'}
+            className="w-full justify-start gap-2"
+            onClick={() => setActiveSection('active-session')}
+          >
+            <School className="w-4 h-4" />
+            Active Session
           </Button>
         </aside>
 
@@ -244,8 +323,49 @@ export function ModernStudentDashboard() {
                     <p className="text-xs text-muted-foreground mt-3">
                       {new Date(notification.createdAt).toLocaleString()}
                     </p>
+                    {notification.link?.startsWith('examinations/') && (
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => viewExaminationDetails(notification)}
+                          disabled={examinationLoadingId === notification.id}
+                        >
+                          {examinationLoadingId === notification.id ? 'Loading...' : 'View Details'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => openRegistrationForm(notification)}
+                          disabled={examinationLoadingId === notification.id}
+                        >
+                          {examinationLoadingId === notification.id ? 'Loading...' : 'Register'}
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 ))
+              )}
+            </CardContent>
+          </Card>
+        </main>
+      ) : activeSection === 'active-session' ? (
+        <main className="container mx-auto px-4 py-8 max-w-4xl">
+          <Card>
+            <CardHeader>
+              <CardTitle>Active Session</CardTitle>
+              <CardDescription>Your admission session from the enrolled student record.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {student.activeSession ? (
+                <div className="rounded-lg border p-4 space-y-2">
+                  <p className="font-semibold">{student.activeSession.name}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {new Date(student.activeSession.startDate).toLocaleDateString()} - {new Date(student.activeSession.endDate).toLocaleDateString()}
+                  </p>
+                  <Badge variant="outline">{student.activeSession.status}</Badge>
+                </div>
+              ) : (
+                <p className="py-8 text-center text-sm text-muted-foreground">No active admission session is assigned.</p>
               )}
             </CardContent>
           </Card>
@@ -418,6 +538,181 @@ export function ModernStudentDashboard() {
       </main>
       </>
       )}
+      <Dialog open={Boolean(selectedExamination)} onOpenChange={open => !open && setSelectedExamination(null)}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{selectedExamination?.examinationName || 'Examination Details'}</DialogTitle>
+          </DialogHeader>
+          {selectedExamination && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+              <div><span className="text-muted-foreground">Examination ID</span><p className="font-medium break-all">{selectedExamination.id}</p></div>
+              <div><span className="text-muted-foreground">Organization ID</span><p className="font-medium break-all">{selectedExamination.organizationId}</p></div>
+              <div><span className="text-muted-foreground">Examination Type</span><p className="font-medium">{selectedExamination.examinationType}</p></div>
+              <div><span className="text-muted-foreground">Status</span><p className="font-medium">{selectedExamination.status}</p></div>
+              <div><span className="text-muted-foreground">Session</span><p className="font-medium">{selectedExamination.academicSession?.name}</p></div>
+              <div><span className="text-muted-foreground">Program</span><p className="font-medium">{selectedExamination.program?.name}</p></div>
+              <div><span className="text-muted-foreground">Semester</span><p className="font-medium">{selectedExamination.semester?.semesterName}</p></div>
+              <div><span className="text-muted-foreground">Start Date</span><p className="font-medium">{new Date(selectedExamination.startDate).toLocaleDateString()}</p></div>
+              <div><span className="text-muted-foreground">End Date</span><p className="font-medium">{new Date(selectedExamination.endDate).toLocaleDateString()}</p></div>
+              <div className="sm:col-span-2"><span className="text-muted-foreground">Description</span><p className="font-medium">{selectedExamination.description || 'No description provided.'}</p></div>
+              <div className="sm:col-span-2">
+                <span className="text-muted-foreground">Modules</span>
+                {selectedExamination.modules?.length ? (
+                  <div className="mt-1 space-y-2">
+                    {selectedExamination.modules.map((module: any) => (
+                      <div key={module.id} className="rounded-md border p-3">
+                        <p className="font-medium">{module.moduleName}</p>
+                        <p className="text-xs text-muted-foreground">{module.moduleCode} · {module.moduleType}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-1 text-muted-foreground">No modules assigned.</p>
+                )}
+              </div>
+              <div className="sm:col-span-2">
+                <span className="text-muted-foreground">Schedule</span>
+                {Array.isArray(selectedExamination.schedule) && selectedExamination.schedule.length > 0 ? (
+                  <div className="mt-1 space-y-2">
+                    {selectedExamination.schedule.map((item: any, index: number) => {
+                      const module = selectedExamination.modules?.find((entry: any) => entry.id === item.moduleId);
+                      return (
+                        <div key={`${item.moduleId || 'schedule'}-${index}`} className="rounded-md border p-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <div><span className="text-xs text-muted-foreground">Module</span><p className="font-medium">{module?.moduleName || item.moduleId || 'Not assigned'}</p></div>
+                          <div><span className="text-xs text-muted-foreground">Date</span><p className="font-medium">{item.date ? new Date(item.date).toLocaleDateString() : 'Not set'}</p></div>
+                          <div><span className="text-xs text-muted-foreground">Time</span><p className="font-medium">{item.startTime || 'Not set'} - {item.endTime || 'Not set'}</p></div>
+                          <div><span className="text-xs text-muted-foreground">Exam Room</span><p className="font-medium">{item.examRoom || 'Not set'}</p></div>
+                          <div><span className="text-xs text-muted-foreground">Maximum Marks</span><p className="font-medium">{item.maxMarks ?? 'Not set'}</p></div>
+                          <div><span className="text-xs text-muted-foreground">Passing Marks</span><p className="font-medium">{item.passingMarks ?? 'Not set'}</p></div>
+                          <div><span className="text-xs text-muted-foreground">Duration</span><p className="font-medium">{item.examDuration ? `${item.examDuration} minutes` : 'Not set'}</p></div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="mt-1 text-muted-foreground">No schedule assigned.</p>
+                )}
+              </div>
+              <div><span className="text-muted-foreground">Created At</span><p className="font-medium">{new Date(selectedExamination.createdAt).toLocaleString()}</p></div>
+              <div><span className="text-muted-foreground">Updated At</span><p className="font-medium">{new Date(selectedExamination.updatedAt).toLocaleString()}</p></div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+      <Dialog open={registrationOpen} onOpenChange={setRegistrationOpen}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Examination Registration</DialogTitle>
+            <DialogDescription>Verify the examination details and complete the required student fields.</DialogDescription>
+          </DialogHeader>
+          <form className="space-y-4" onSubmit={event => event.preventDefault()}>
+            {registrationExamination && (
+              <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+                <h3 className="font-semibold">Examination Details</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                  <div><span className="text-muted-foreground">Examination Name</span><p className="font-medium">{registrationExamination.examinationName}</p></div>
+                  <div><span className="text-muted-foreground">Examination Type</span><p className="font-medium">{registrationExamination.examinationType}</p></div>
+                  <div><span className="text-muted-foreground">Session</span><p className="font-medium">{registrationExamination.academicSession?.name}</p></div>
+                  <div><span className="text-muted-foreground">Program</span><p className="font-medium">{registrationExamination.program?.name}</p></div>
+                  <div><span className="text-muted-foreground">Semester</span><p className="font-medium">{registrationExamination.semester?.semesterName}</p></div>
+                  <div><span className="text-muted-foreground">Status</span><p className="font-medium">{registrationExamination.status}</p></div>
+                  <div><span className="text-muted-foreground">Start Date</span><p className="font-medium">{new Date(registrationExamination.startDate).toLocaleDateString()}</p></div>
+                  <div><span className="text-muted-foreground">End Date</span><p className="font-medium">{new Date(registrationExamination.endDate).toLocaleDateString()}</p></div>
+                </div>
+                {registrationExamination.description && (
+                  <div className="text-sm"><span className="text-muted-foreground">Description</span><p className="font-medium">{registrationExamination.description}</p></div>
+                )}
+                {registrationExamination.modules?.length > 0 && (
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">Modules</span>
+                    <div className="mt-1 flex flex-wrap gap-2">
+                      {registrationExamination.modules.map((module: any) => (
+                        <Badge key={module.id} variant="outline">{module.moduleCode} - {module.moduleName} ({module.moduleType})</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {registrationExamination.schedule?.length > 0 && (
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">Schedule</span>
+                    <div className="mt-1 space-y-2">
+                      {registrationExamination.schedule.map((item: any, index: number) => {
+                        const module = registrationExamination.modules?.find((entry: any) => entry.id === item.moduleId);
+                        return (
+                          <div key={`${item.moduleId || 'schedule'}-${index}`} className="rounded-md border p-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <span>Module: <strong>{module?.moduleName || item.moduleId || 'Not assigned'}</strong></span>
+                            <span>Date: <strong>{item.date ? new Date(item.date).toLocaleDateString() : 'Not set'}</strong></span>
+                            <span>Time: <strong>{item.startTime || 'Not set'} - {item.endTime || 'Not set'}</strong></span>
+                            <span>Room: <strong>{item.examRoom || 'Not set'}</strong></span>
+                            <span>Maximum Marks: <strong>{item.maxMarks ?? 'Not set'}</strong></span>
+                            <span>Passing Marks: <strong>{item.passingMarks ?? 'Not set'}</strong></span>
+                            <span>Duration: <strong>{item.examDuration ? `${item.examDuration} minutes` : 'Not set'}</strong></span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="border-t pt-4">
+              <h3 className="font-semibold mb-3">Student Details</h3>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="registration-full-name">Full Name *</Label>
+              <Input
+                id="registration-full-name"
+                value={registrationForm.fullName}
+                onChange={event => setRegistrationForm({ ...registrationForm, fullName: event.target.value })}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="registration-enrollment-no">Enrollment Number *</Label>
+              <Input
+                id="registration-enrollment-no"
+                value={registrationForm.enrollmentNo}
+                onChange={event => setRegistrationForm({ ...registrationForm, enrollmentNo: event.target.value })}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="registration-email">Email *</Label>
+              <Input
+                id="registration-email"
+                type="email"
+                value={registrationForm.email}
+                onChange={event => setRegistrationForm({ ...registrationForm, email: event.target.value })}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="registration-phone">Phone Number *</Label>
+              <Input
+                id="registration-phone"
+                type="tel"
+                value={registrationForm.phone}
+                onChange={event => setRegistrationForm({ ...registrationForm, phone: event.target.value })}
+                required
+              />
+            </div>
+            <label className="flex items-start gap-2 text-sm border-t pt-4">
+              <input
+                type="checkbox"
+                checked={registrationConfirmed}
+                onChange={event => setRegistrationConfirmed(event.target.checked)}
+                required
+                className="mt-1"
+              />
+              <span>I confirm that the examination details shown above are correct.</span>
+            </label>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setRegistrationOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={!registrationConfirmed}>Register</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
         </div>
       </div>
     </div>

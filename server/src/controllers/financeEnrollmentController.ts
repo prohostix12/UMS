@@ -225,6 +225,7 @@ export const approveFinanceEnrollment = asyncHandler(async (req: AuthRequest, re
           maritalStatus: dbEnrollment.maritalStatus,
           currentlyWorking: dbEnrollment.currentlyWorking,
           status: 'active',
+          sessionId: dbEnrollment.sessionId,
           enrolledAt: new Date(),
           organization: { connect: { id: req.user.organizationId } },
           center: { connect: { id: dbEnrollment.studyCenterId } },
@@ -252,7 +253,8 @@ export const approveFinanceEnrollment = asyncHandler(async (req: AuthRequest, re
         pincode: dbEnrollment.pincode,
         alternativePhone: dbEnrollment.alternativePhone,
         maritalStatus: dbEnrollment.maritalStatus,
-        currentlyWorking: dbEnrollment.currentlyWorking
+        currentlyWorking: dbEnrollment.currentlyWorking,
+        sessionId: dbEnrollment.sessionId
       };
       if (!student.enrolledAt) {
         updateData.enrolledAt = new Date();

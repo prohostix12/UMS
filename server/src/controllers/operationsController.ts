@@ -400,6 +400,38 @@ export const createExamination = asyncHandler(async (req: AuthRequest, res: Resp
     moduleIds: Array.isArray(moduleIds) ? moduleIds : [],
     schedule: Array.isArray(schedule) ? schedule : [],
   } });
+  const session = await prisma.admissionSession.findUnique({
+    where: { id: academicSessionId },
+    select: { name: true },
+  });
+
+  const matchingStudents = await prisma.student.findMany({
+    where: {
+      organizationId: req.user.organizationId,
+      programId,
+      status: 'active',
+      OR: [
+        { sessionId: academicSessionId },
+        { enrollments: { some: { sessionId: academicSessionId, status: 'enrolled' } } },
+      ],
+    },
+    select: { user: { select: { id: true } } },
+  });
+
+  if (matchingStudents.length > 0) {
+    await prisma.notification.createMany({
+      data: matchingStudents.map(({ user }) => ({
+        organizationId: req.user.organizationId,
+        userId: user.id,
+        title: 'New Examination Published',
+        message: `${examinationType} has been created for your ${session?.name || 'admission session'}.`,
+        type: 'general' as any,
+        priority: 'medium' as any,
+        link: `examinations/${examination.id}`,
+      })),
+    });
+  }
+
   res.status(201).json({ success: true, data: examination });
 });
 
